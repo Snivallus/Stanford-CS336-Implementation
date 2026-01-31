@@ -1,51 +1,66 @@
+import os
+import mmap
 import regex as re
 from collections import defaultdict, Counter
 import multiprocessing as mp
 import time
 import argparse
+from typing import (
+    BinaryIO,
+    List,
+    Dict,
+    Tuple,
+    DefaultDict
+)
+
+Word = bytes
+TokenId = int
+Pair = Tuple[TokenId, TokenId]
+
+WordEncoding = List[TokenId]
+Vocab = Dict[TokenId, bytes]
+WordCounter = Counter[Word]
+PairCounter = Dict[Pair, int]
+PairStrings = Dict[Pair, Tuple[bytes, bytes]]
+PairToWords = DefaultDict[Pair, Counter[Word]]
+
 import cs336_basics.BPE_Tokenizer.max_heapq as maxheap
 
-CHUNK_SIZE = 1024 * 1024
+
+MIN_CHUNK_SIZE = 4 * 1024 * 1024 # 4 MB
 N_BYTES = 256
-NUM_COUNTER_PROCESS = 16
+MAX_NUM_COUNTERS = 64
 
 class BPE_Trainer():
     def train_bpe(
-        self, 
-        input_path, 
-        vocab_size, 
-        special_tokens, 
-        *args
-    ):
+        self,
+        input_path: str,
+        vocab_size: int,
+        special_tokens: List[str],
+        *args: str,
+    ) -> Tuple[Vocab, List[Tuple[bytes, bytes]]]:
         parser = argparse.ArgumentParser()
         parser.add_argument(
-            "--num_counter", 
+            "--max_num_counters", 
             "-c",                
-            type=int, 
-            default=NUM_COUNTER_PROCESS, 
-            help="number of processes for counting"
+            type = int, 
+            default = MAX_NUM_COUNTERS, 
+            help = "maximum number of parallel counting processes"
         )
-        parser.add_argument(
-            "--do_monitor",
-            action="store_true",
-            help="Enable queue monitor. (default: False)"
-        )        
 
         args = parser.parse_args(args)
-        print(f"train_bpe: {args=}")
-        num_counter = args.num_counter
-        do_monitor = args.do_monitor 
+        print(f"train_bpe: {args = }")
+        max_num_counters = args.max_num_counters
 
         # pretokenize and count words
         start_time = time.perf_counter()
         word_counts = self._pretokenize_and_count_mp(
             input_path, 
             special_tokens, 
-            num_counter, 
-            do_monitor
+            max_num_counters
         )
         end_time = time.perf_counter()
-        print(f"_pretokenize_and_count_mp: {end_time - start_time}")
+        print(f"_pretokenize_and_count_words: {end_time - start_time} sec")
         
         # initialize vocabulary
         vocab = {i: bytes([i]) for i in range(N_BYTES)} # every byte
@@ -57,7 +72,7 @@ class BPE_Trainer():
         # encode words to byte ids
         word_encodings = {} # hash map from word to list of byte ids
         for word in word_counts:
-            word_encodings[word] = list(word.encode('utf-8'))
+            word_encodings[word] = list(word)
 
         # count initial pairs
         pair_strings = {} # hash map from pair to its string representation (tuple of strings)
@@ -71,7 +86,7 @@ class BPE_Trainer():
             pair_to_words
         )
         end_time = time.perf_counter()
-        print(f"_count_pairs: {end_time - start_time:.2f}s")
+        print(f"_count_pairs: {end_time - start_time:.2f} sec")
 
         # build maxheap
         start_time = time.perf_counter()
@@ -82,7 +97,7 @@ class BPE_Trainer():
                 (count, pair_strings[pair], pair)
             )
         end_time = time.perf_counter()
-        print(f"build heap: {end_time - start_time:.2f}s")
+        print(f"_build_heap: {end_time - start_time:.2f} sec")
 
         # perform merges
         start_time = time.perf_counter()
@@ -100,177 +115,140 @@ class BPE_Trainer():
             )
             size += 1
         end_time = time.perf_counter()
-        print(f"merge time: {end_time - start_time}")               
+        print(f"_merge: {end_time - start_time} sec")               
         
         return vocab, merges
 
 
     def _pretokenize_and_count_mp(
-            self,
-            input_path: str, 
-            special_tokens: list[str],
-            num_counter, 
-            do_monitor
-        ):
+        self,
+        input_path: str,
+        special_tokens: List[str],
+        max_num_counters: int,
+    ) -> WordCounter:
         # GPT-2 regex
-        PAT = re.compile(r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+""")
+        gpt2_pattern = re.compile(
+            rb"""'(?:[sdmt]|ll|ve|re)| ?[A-Za-z]+| ?\d+| ?[^\sA-Za-z\d]+|\s+(?!\S)|\s+"""
+        )
+
         # build split pattern
-        special_token_pattern = "|".join(re.escape(token) for token in special_tokens)
+        special_token_pattern = b"|".join(
+            re.escape(token.encode("utf-8")) for token in special_tokens
+        )
+        special_token_pattern = re.compile(special_token_pattern)
 
-        chunk_queue = mp.Queue(maxsize=1_000_000)
-        counter_queue = mp.Queue(maxsize=1_000_000)
-        counter_processes = []
-     
-        # start counter processes
-        for i in range(num_counter):
-            p = mp.Process(
-                target = BPE_Trainer._chunk_counter_process, 
-                args = (
-                    chunk_queue, 
-                    counter_queue, 
-                    PAT, 
-                    special_token_pattern
-                ),
-                name = f"counter_process-{i+1}")
-            p.start()
-            counter_processes.append(p)    
+        # memory-map the file for shared access
+        with open(input_path, "rb") as f:
+            mm = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
 
-        # For unit tests, call stop_event.set() to terminate the monitor early.
-        # Otherwise, the monitor process may cause the speed test to fail.
-        if do_monitor:
-            stop_event = mp.Event()
-            monitor_process = mp.Process(
-                target = BPE_Trainer._queue_moniter_process, 
-                args=(
-                    chunk_queue, 
-                    counter_queue, 
-                    stop_event
-                )
+            # find chunk boundaries
+            boundaries = BPE_Trainer.find_chunk_boundaries(
+                file = f,
+                desired_num_chunks = max_num_counters,
+                split_special_token = b"<|endoftext|>",
             )
-            monitor_process.start()
 
-        # feed chunks to chunk_queue
-        for chunk in BPE_Trainer._chunk_documents_streaming(input_path):
-            chunk_queue.put(chunk)
+            # create chunk ranges
+            ranges = [
+                (input_path, boundaries[i], boundaries[i+1], gpt2_pattern, special_token_pattern)
+                for i in range(len(boundaries) - 1)
+            ]
 
-        # after all chunks are fed, signal counter processes to stop
-        for i in range(num_counter):
-            chunk_queue.put(None)
+            # count in parallel and 
+            word_counts = Counter()
+            with mp.Pool(processes = min(os.cpu_count(), len(ranges))) as pool:
+                # use imap_unordered to get results as they complete
+                for c in pool.imap_unordered(
+                    BPE_Trainer._count_chunk_process,
+                    ranges,
+                    chunksize=1,
+                ):
+                    # aggregate counts
+                    word_counts.update(c)
 
-        # counter processes finished already, now drain counter_queue
-        word_counts = Counter()
-        finished = 0
-        while finished < num_counter:
-            counter = counter_queue.get()
-            if counter is None:
-                finished += 1
-            else:
-                word_counts.update(counter)
-
-        # wait for all counter processes to finish
-        for p in counter_processes:
-            p.join()
-
-        # after all counters are finished, stop monitor process
-        if do_monitor:
-            stop_event.set()
-            monitor_process.join() 
+            mm.close()
 
         return word_counts
 
 
     @staticmethod
-    def _chunk_counter_process(
-        chunk_queue, 
-        counter_queue, 
-        pattern, 
-        special_token_pattern
-    ):
-        while True:
-            # get chunk
-            chunk = chunk_queue.get()
-            if chunk == None:
-                break
-            # split by special tokens
-            blocks = re.split(special_token_pattern, chunk)
-            # count tokens in each block
-            counter = defaultdict(int)
-            for block in blocks:
-                for match in re.finditer(pattern, block):
-                    text = match.group(0)
-                    counter[text] += 1
-            # put counter to counter_queue
-            counter_queue.put(counter)
-        
-        # signal main process this worker is done
-        counter_queue.put(None)
-
-
-    @staticmethod
-    def _queue_moniter_process(
-        chunk_queue, 
-        counter_queue,
-        event
-    ):
-        # monitor queue sizes every 10 seconds
-        while not event.is_set():
-            print(f"""
-                chunk_queue: {chunk_queue.qsize()}, 
-                counter_queue: {counter_queue.qsize()}
-            """)
-            time.sleep(10)
-
-
-    @staticmethod
-    def _chunk_documents_streaming(
-        path: str,
-        chunk_size: int = CHUNK_SIZE,
-        special_token: str = "<|endoftext|>"
-    ):
+    def find_chunk_boundaries(
+        file: BinaryIO,
+        desired_num_chunks: int,
+        split_special_token: bytes,
+    ) -> List[int]:
         """
-        Reads 'path' in streaming fashion, yielding chunks of text that
-        each end on a '<|endoftext|>' boundary.
+        Chunk the file into parts that can be counted independently.
+        May return fewer chunks if the boundaries end up overlapping.
         """
+        assert isinstance(split_special_token, bytes), "Must represent special token as a bytestring"
 
-        leftover = ""
-        token_len = len(special_token)
+        # Get total file size in bytes
+        file.seek(0, os.SEEK_END)
+        file_size = file.tell()
+        file.seek(0)
 
-        with open(path, "r", encoding="utf-8") as f:
+        chunk_size = file_size // desired_num_chunks
+
+        # Initial guesses for chunk boundary locations, uniformly spaced
+        # Chunks start on previous index, don't include last index
+        chunk_boundaries = [i * chunk_size for i in range(desired_num_chunks + 1)]
+        chunk_boundaries[-1] = file_size
+
+        mini_chunk_size = MIN_CHUNK_SIZE  # Read ahead by MIN_CHUNK_SIZE bytes at a time
+
+        for bi in range(1, len(chunk_boundaries) - 1):
+            initial_position = chunk_boundaries[bi]
+            file.seek(initial_position)  # Start at boundary guess
             while True:
-                # read ahead chunk_size bytes, end if EOF
-                block = f.read(chunk_size)
-                if not block:
+                mini_chunk = file.read(mini_chunk_size)  # Read a mini chunk
+
+                # If EOF, this boundary should be at the end of the file
+                if mini_chunk == b"":
+                    chunk_boundaries[bi] = file_size
                     break
 
-                # prepend leftover from last read
-                block = leftover + block
-                leftover = ""
+                # Find the special token in the mini chunk
+                found_at = mini_chunk.find(split_special_token)
+                if found_at != -1:
+                    chunk_boundaries[bi] = initial_position + found_at
+                    break
+                initial_position += mini_chunk_size
 
-                # find last <|endoftext|> in block
-                last_eot_idx = block.rfind(special_token)
+        # Make sure all boundaries are unique, but might be fewer than desired_num_chunks
+        return sorted(set(chunk_boundaries))
 
-                # if no <|endoftext|> found, keep reading
-                if last_eot_idx == -1:
-                    leftover = block
-                else:
-                    # yield the block up to that boundary
-                    yield block[: last_eot_idx + token_len]
-                    # store leftover text
-                    leftover = block[last_eot_idx + token_len:]
+    @staticmethod
+    def _count_chunk_process(
+        args: Tuple[str, int, int, re.Pattern[bytes], re.Pattern[bytes]],
+    ) -> Counter[bytes]:
+        # unpack args
+        input_path, start, end, gpt2_pattern, special_token_pattern = args
 
-        # yield leftover if any
-        if leftover:
-            yield leftover
+        # split by special tokens and count in each block
+        counter = Counter()
+        with open(input_path, "rb") as f:
+            mm = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
+            data = mm[start:end]
+
+            blocks = special_token_pattern.split(data)
+            for block in blocks:
+                for m in gpt2_pattern.finditer(block):
+                    counter[m.group(0)] += 1
+
+            mm.close()
+
+        return counter
 
 
-    @staticmethod    
+    @staticmethod
     def _count_pairs(
-        word_counts, 
-        word_encodings, 
-        pair_strings, 
-        vocab, 
-        pair_to_words
-    ):
+        word_counts: WordCounter,
+        word_encodings: Dict[Word, WordEncoding],
+        pair_strings: PairStrings,
+        vocab: Vocab,
+        pair_to_words: PairToWords,
+    ) -> PairCounter:
         pair_counts = defaultdict(int) # hash map from pair to its occurrence count in the corpus 
         # count pairs in all words
         for word, count in word_counts.items():
@@ -289,16 +267,16 @@ class BPE_Trainer():
 
     @staticmethod
     def _merge_a_pair(
-        pair_counts, 
-        pair_strings, 
-        vocab, 
-        pair_to_words, 
-        word_counts, 
-        word_encodings, 
-        merges, 
-        size, 
-        pair_heap
-    ):
+        pair_counts: PairCounter,
+        pair_strings: PairStrings,
+        vocab: Vocab,
+        pair_to_words: PairToWords,
+        word_counts: WordCounter,
+        word_encodings: Dict[Word, WordEncoding],
+        merges: List[Tuple[bytes, bytes]],
+        size: int,
+        pair_heap: List[Tuple[int, Tuple[bytes, bytes], Pair]],
+    ) -> None:
         # get the most frequent pair
         while pair_heap:
             # pop max
@@ -347,17 +325,17 @@ class BPE_Trainer():
 
     @staticmethod
     def _update_pair_count_of_affected_words(
-        pair_to_be_merged, 
-        affected_words, 
-        word_encodings, 
-        word_counts, 
-        pair_counts, 
-        pair_to_words, 
-        new_id, 
-        pair_strings, 
-        vocab, 
-        pair_heap
-    ):
+        pair_to_be_merged: Pair,
+        affected_words: Counter[Word],
+        word_encodings: Dict[Word, WordEncoding],
+        word_counts: WordCounter,
+        pair_counts: PairCounter,
+        pair_to_words: PairToWords,
+        new_id: TokenId,
+        pair_strings: PairStrings,
+        vocab: Vocab,
+        pair_heap: List[Tuple[int, Tuple[bytes, bytes], Pair]],
+    ) -> None:
         pair_count_difference = defaultdict(int) # hash map from pair to count difference
         bytes_a, bytes_b = pair_to_be_merged
         for word in affected_words:
