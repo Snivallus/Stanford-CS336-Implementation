@@ -60,7 +60,7 @@ class BPE_Trainer():
             max_num_counters
         )
         end_time = time.perf_counter()
-        print(f"_pretokenize_and_count_words: {end_time - start_time} sec")
+        print(f"_pretokenize_and_count_words: {end_time - start_time} sec for {len(word_counts)} unique words")
         
         # initialize vocabulary
         vocab = {i: bytes([i]) for i in range(N_BYTES)} # every byte
@@ -86,7 +86,7 @@ class BPE_Trainer():
             pair_to_words
         )
         end_time = time.perf_counter()
-        print(f"_count_pairs: {end_time - start_time:.2f} sec")
+        print(f"_count_pairs: {end_time - start_time:.2f} sec for {len(pair_counts)} unique pairs")
 
         # build maxheap
         start_time = time.perf_counter()
@@ -97,7 +97,7 @@ class BPE_Trainer():
                 (count, pair_strings[pair], pair)
             )
         end_time = time.perf_counter()
-        print(f"_build_heap: {end_time - start_time:.2f} sec")
+        print(f"_build_heap: {end_time - start_time:.2f} sec for {len(pair_heap)} heap size")
 
         # perform merges
         start_time = time.perf_counter()
@@ -115,7 +115,7 @@ class BPE_Trainer():
             )
             size += 1
         end_time = time.perf_counter()
-        print(f"_merge: {end_time - start_time} sec")               
+        print(f"_merge: {end_time - start_time} sec for {vocab_size - (N_BYTES + len(special_tokens))} merges\n")               
         
         return vocab, merges
 
@@ -154,16 +154,22 @@ class BPE_Trainer():
                 for i in range(len(boundaries) - 1)
             ]
 
-            # count in parallel and 
+            # count in parallel and aggregate results
             word_counts = Counter()
-            with mp.Pool(processes = min(os.cpu_count(), len(ranges))) as pool:
-                # use imap_unordered to get results as they complete
+
+            num_procs = min(
+                max(1, os.cpu_count() // 2),
+                len(ranges),
+            )
+
+            with mp.Pool(processes=num_procs) as pool:
+                # use imap_unordered to consume results as workers finish
                 for c in pool.imap_unordered(
                     BPE_Trainer._count_chunk_process,
                     ranges,
                     chunksize=1,
                 ):
-                    # aggregate counts
+                    # aggregate partial counters
                     word_counts.update(c)
 
             mm.close()

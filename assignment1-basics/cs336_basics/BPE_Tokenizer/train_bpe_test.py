@@ -17,7 +17,7 @@ class TestBPETrainingExample(unittest.TestCase):
     by train_bpe exactly match the expected merge sequence.
     """
 
-    def test_sennrich_example_merges(self):
+    def test_01_sennrich_example_merges(self):
         """
         Example corpus:
 
@@ -76,13 +76,14 @@ class TestBPETrainingExample(unittest.TestCase):
             os.remove(input_path)
 
 
-    def test_tinystories_valid_profile_train_bpe(self):
+    # cProfile helper function
+    def _profile_train_bpe(self, input_path, vocab_size, special_tokens):
         """
         Profile train_bpe on a real (but fixed) dataset to detect
         obvious performance regressions.
 
         This test:
-        - Runs BPE training on TinyStoriesV2-GPT4-valid.txt
+        - Runs BPE training on TinyStoriesV2-GPT4 or OpenWebText
         - Collects cProfile statistics
         - Asserts basic sanity conditions (non-empty vocab / merges)
 
@@ -90,9 +91,6 @@ class TestBPETrainingExample(unittest.TestCase):
         This is NOT a strict performance benchmark, but a profiling
         smoke test to surface major bottlenecks during development.
         """
-
-        input_path = "../datasets/TinyStoriesV2-GPT4-train.txt"
-
         self.assertTrue(
             os.path.exists(input_path),
             f"Dataset not found at expected path: {input_path}",
@@ -105,32 +103,42 @@ class TestBPETrainingExample(unittest.TestCase):
 
         vocab, merges = bpe_trainer.train_bpe(
             input_path=input_path,
-            vocab_size=256 + 1 + 100,  # bytes + <|endoftext|> + small merge budget
-            special_tokens=["<|endoftext|>"],
+            vocab_size=vocab_size,
+            special_tokens=special_tokens,
         )
 
         profiler.disable()
 
         # --- Basic sanity assertions ---
-        self.assertGreater(
-            len(vocab),
-            256,
-            "Vocabulary should grow beyond raw bytes",
-        )
+        self.assertGreater(len(vocab), 256)
+        self.assertGreater(len(merges), 0)
 
-        self.assertGreater(
-            len(merges),
-            0,
-            "Expected at least one BPE merge to be learned",
-        )
-
-        # --- Print profiling summary (top cumulative time) ---
+        # --- Print profiling summary ---
         s = StringIO()
         stats = pstats.Stats(profiler, stream=s)
         stats.strip_dirs().sort_stats("cumulative").print_stats(25)
 
-        print("\n========== cProfile Results (Top 25 by cumulative time) ==========")
+        print(
+            "\n========== cProfile Results "
+            f"({os.path.basename(input_path)}) =========="
+        )
         print(s.getvalue())
+
+
+    def test_02_tinystories_profile_train_bpe(self):
+        self._profile_train_bpe(
+            input_path = "../datasets/TinyStoriesV2-GPT4-train.txt",
+            vocab_size = 256 + 1 + 100, # bytes + <|endoftext|> + small merge budget
+            special_tokens=["<|endoftext|>"],
+        )
+
+
+    def test_03_OpenWebText_profile_train_bpe(self):
+        self._profile_train_bpe(
+            input_path = "../datasets/owt_train.txt",
+            vocab_size = 256 + 1 + 31743, # bytes + <|endoftext|> + small merge budget
+            special_tokens = ["<|endoftext|>"],
+        )
 
 
 if __name__ == "__main__":
