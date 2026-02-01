@@ -1,12 +1,25 @@
+"""
+Unit and profiling tests for the BPE training implementation.
+
+This file verifies correctness of BPE merges using a canonical
+Sennrich et al. (2016) example, and includes lightweight cProfile-based
+smoke tests on larger corpora (e.g., TinyStories, OpenWebText) to
+surface major performance regressions during development.
+
+All test output is echoed to the console and duplicated to a log file
+for offline inspection.
+"""
+
 import os
+import sys
 from io import StringIO
 import tempfile
 import cProfile
 import pstats
 import unittest
 
-from cs336_basics.BPE_Tokenizer.train_bpe import BPE_Trainer
-
+from cs336_basics.BPE_Tokenizer.train_bpe import BPE_Trainer # BPE training implementation
+from cs336_basics.utils import TeeStdout # Utility to tee stdout to a file
 
 class TestBPETrainingExample(unittest.TestCase):
     """
@@ -55,9 +68,9 @@ class TestBPETrainingExample(unittest.TestCase):
         try:
             bpe_trainer = BPE_Trainer()
             vocab, merges = bpe_trainer.train_bpe(
-                input_path=input_path,
-                vocab_size=256 + 1 + 6,  # bytes + <|endoftext|> + 6 merges
-                special_tokens=["<|endoftext|>"],
+                input_path = input_path,
+                vocab_size = 256 + 1 + 6,  # bytes + <|endoftext|> + 6 merges
+                special_tokens = ["<|endoftext|>"],
             )
 
             self.assertGreaterEqual(
@@ -136,10 +149,22 @@ class TestBPETrainingExample(unittest.TestCase):
     def test_03_OpenWebText_profile_train_bpe(self):
         self._profile_train_bpe(
             input_path = "../datasets/owt_train.txt",
-            vocab_size = 256 + 1 + 31743, # bytes + <|endoftext|> + small merge budget
+            vocab_size = 256 + 1 + 31743, # bytes + <|endoftext|> + large merge budget
             special_tokens = ["<|endoftext|>"],
         )
 
 
 if __name__ == "__main__":
-    unittest.main()
+    # Redirect unittest output to a log file
+    log_path = "cs336_basics/BPE_Tokenizer/train_bpe_test.txt"
+    os.makedirs(os.path.dirname(log_path), exist_ok=True)
+
+    original_stdout = sys.stdout
+
+    with open(log_path, "w", encoding="utf-8") as f:
+        sys.stdout = TeeStdout(original_stdout, f)
+        try:
+            # Run the unit tests
+            unittest.main()
+        finally:
+            sys.stdout = original_stdout

@@ -1,5 +1,15 @@
+"""
+Byte Pair Encoding (BPE) training implementation.
+
+This module trains a BPE vocabulary from raw text by:
+- Pretokenizing input with a GPT-2–style regex
+- Counting words in parallel using memory-mapped I/O
+- Iteratively merging the most frequent byte/token pairs using a lazy max-heap approach
+"""
+
 import os
 import mmap
+import gc
 import regex as re
 from collections import defaultdict, Counter
 import multiprocessing as mp
@@ -78,7 +88,7 @@ class BPE_Trainer():
         pair_strings = {} # hash map from pair to its string representation (tuple of strings)
         pair_to_words = defaultdict(Counter) # hash map from pair to words containing the pair (with occurrence count of the pair in each word)
         start_time = time.perf_counter()
-        pair_counts = BPE_Trainer._count_pairs(
+        pair_counts = self._count_pairs(
             word_counts, 
             word_encodings, 
             pair_strings, 
@@ -102,7 +112,7 @@ class BPE_Trainer():
         # perform merges
         start_time = time.perf_counter()
         while size < vocab_size:
-            BPE_Trainer._merge_a_pair(
+            self._merge_a_pair(
                 pair_counts, 
                 pair_strings, 
                 vocab,
@@ -142,7 +152,7 @@ class BPE_Trainer():
             mm = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
 
             # find chunk boundaries
-            boundaries = BPE_Trainer.find_chunk_boundaries(
+            boundaries = self.find_chunk_boundaries(
                 file = f,
                 desired_num_chunks = max_num_counters,
                 split_special_token = b"<|endoftext|>",
@@ -165,14 +175,15 @@ class BPE_Trainer():
             with mp.Pool(processes=num_procs) as pool:
                 # use imap_unordered to consume results as workers finish
                 for c in pool.imap_unordered(
-                    BPE_Trainer._count_chunk_process,
+                    self._count_chunk_process,
                     ranges,
                     chunksize=1,
                 ):
                     # aggregate partial counters
                     word_counts.update(c)
 
-            mm.close()
+            mm.close() # close memory-mapped file
+            gc.collect() # force garbage collection to free memory
 
         return word_counts
 
@@ -271,8 +282,8 @@ class BPE_Trainer():
         return pair_counts
 
 
-    @staticmethod
     def _merge_a_pair(
+        self,
         pair_counts: PairCounter,
         pair_strings: PairStrings,
         vocab: Vocab,
@@ -312,7 +323,7 @@ class BPE_Trainer():
         # get affected words
         affected_words = pair_to_words[pair_to_be_merged].copy() # copy to avoid modification during iteration
         # update counts of affected words
-        BPE_Trainer._update_pair_count_of_affected_words(
+        self._update_pair_count_of_affected_words(
             pair_to_be_merged, 
             affected_words, 
             word_encodings,
