@@ -149,14 +149,14 @@ class TestBPETrainingExample(unittest.TestCase):
     def test_03_OpenWebText_profile_train_bpe(self):
         self._profile_train_bpe(
             input_path = "../datasets/owt_train.txt",
-            vocab_size = 256 + 1 + 31743, # bytes + <|endoftext|> + large merge budget
+            vocab_size = 256 + 1 + 100, # bytes + <|endoftext|> + small merge budget
             special_tokens = ["<|endoftext|>"],
         )
 
 
 if __name__ == "__main__":
     # Redirect unittest output to a log file
-    log_path = "cs336_basics/BPE_Tokenizer/train_bpe_test.txt"
+    log_path = "cs336_basics/BPE_Tokenizer/tests/train_bpe_test.txt"
     os.makedirs(os.path.dirname(log_path), exist_ok=True)
 
     original_stdout = sys.stdout

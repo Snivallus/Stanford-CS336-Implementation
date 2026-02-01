@@ -1,10 +1,11 @@
 """
-Byte Pair Encoding (BPE) training implementation.
+Byte Pair Encoding (BPE) trainer.
 
-This module trains a BPE vocabulary from raw text by:
-- Pretokenizing input with a GPT-2–style regex
-- Counting words in parallel using memory-mapped I/O
-- Iteratively merging the most frequent byte/token pairs using a lazy max-heap approach
+Features:
+- GPT-2 style regex pretokenization
+- Parallel word counting with memory-mapped I/O
+- Iterative merge of most frequent byte/token pairs using a lazy max-heap
+- Optional C/Cython acceleration for pair merging hot loops
 """
 
 import os
@@ -20,21 +21,31 @@ from typing import (
     List,
     Dict,
     Tuple,
-    DefaultDict
+    DefaultDict  
 )
 
 Word = bytes
 TokenId = int
 Pair = Tuple[TokenId, TokenId]
 
-WordEncoding = List[TokenId]
+WordEncoding = List[TokenId] # list of token IDs representing a word
 Vocab = Dict[TokenId, bytes]
 WordCounter = Counter[Word]
 PairCounter = Dict[Pair, int]
-PairStrings = Dict[Pair, Tuple[bytes, bytes]]
-PairToWords = DefaultDict[Pair, Counter[Word]]
+PairStrings = Dict[Pair, Tuple[bytes, bytes]]  # map from token ID pair to byte string representation
+PairToWords = DefaultDict[Pair, Counter[Word]] # map from pair to affected words with occurrence counts
 
 import cs336_basics.BPE_Tokenizer.max_heapq as maxheap
+# try to import CPython native implementation
+try:
+    from cs336_basics.BPE_Tokenizer.bpe_cpython._merge_pair_and_count_pair_difference import _merge_pair_and_count_pair_difference
+    _HAS_NATIVE = True
+except ImportError:
+    print("""
+            Failed to import CPython native implementation of _merge_pair_and_count_pair_difference, 
+            Fallback to its Python implementation.
+    """)
+    _HAS_NATIVE = False
 
 
 MIN_CHUNK_SIZE = 4 * 1024 * 1024 # 4 MB
@@ -167,6 +178,7 @@ class BPE_Trainer():
             # count in parallel and aggregate results
             word_counts = Counter()
 
+            # leave half CPUs free for OS and I/O
             num_procs = min(
                 max(1, os.cpu_count() // 2),
                 len(ranges),
@@ -242,7 +254,7 @@ class BPE_Trainer():
         # unpack args
         input_path, start, end, gpt2_pattern, special_token_pattern = args
 
-        # split by special tokens and count in each block
+        # split data by special tokens and count in each block
         counter = Counter()
         with open(input_path, "rb") as f:
             mm = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
@@ -340,8 +352,8 @@ class BPE_Trainer():
         merges.append((vocab[pair_to_be_merged[0]], vocab[pair_to_be_merged[1]]))
 
 
-    @staticmethod
     def _update_pair_count_of_affected_words(
+        self,
         pair_to_be_merged: Pair,
         affected_words: Counter[Word],
         word_encodings: Dict[Word, WordEncoding],
@@ -353,46 +365,29 @@ class BPE_Trainer():
         vocab: Vocab,
         pair_heap: List[Tuple[int, Tuple[bytes, bytes], Pair]],
     ) -> None:
-        pair_count_difference = defaultdict(int) # hash map from pair to count difference
+        # hash map from pair to its cumulative change in the corpus after merging;
+        # applied globally after processing all affected words
+        pair_count_difference = defaultdict(int)
+        
+        # break down pair_to_be_merged into its constituent bytes
         bytes_a, bytes_b = pair_to_be_merged
+        
         for word in affected_words:
             # get affected tokens and word counts
             old_encoding = word_encodings[word]
             word_freq = word_counts[word]
 
-            # Count old pairs in this word
-            old_pair_counter = Counter()
-            for i in range(len(old_encoding) - 1):
-                old_pair_counter[(old_encoding[i], old_encoding[i+1])] += 1
-
-            # Merge pair_to_be_merged
-            new_encoding = []
-            i = 0
-            while i < len(old_encoding):
-                if (
-                    i < len(old_encoding) - 1
-                    and old_encoding[i] == bytes_a
-                    and old_encoding[i+1] == bytes_b
-                ):
-                    # merge
-                    new_encoding.append(new_id)
-                    i += 2
-                else:
-                    # copy old token
-                    new_encoding.append(old_encoding[i])
-                    i += 1
-
-            word_encodings[word] = new_encoding
-
-            # Count new pairs
-            new_pair_counter = Counter()
-            for i in range(len(new_encoding) - 1):
-                new_pair_counter[(new_encoding[i], new_encoding[i+1])] += 1
+            # merge pair and get pair count differences
+            old_pairs, new_encoding, new_pairs = self._merge_pair_and_count_pair_difference(
+                old_encoding, 
+                bytes_a,
+                bytes_b,
+                new_id
+            )
 
             # Remove old pair contributions
-            for pair, k in old_pair_counter.items():
-                if k == 0:
-                    continue
+            for a, b, k in old_pairs:
+                pair = (a, b)
 
                 # update pair_to_words
                 cnt = pair_to_words[pair][word] - k
@@ -404,11 +399,12 @@ class BPE_Trainer():
                 # update global diff
                 pair_count_difference[pair] -= k * word_freq
 
-            # Add new pair contributions
-            for pair, k in new_pair_counter.items():
-                if k == 0:
-                    continue
+            # Update word encoding
+            word_encodings[word] = new_encoding
 
+            # Add new pair contributions
+            for a, b, k in new_pairs:
+                pair = (a, b)
                 pair_to_words[pair][word] += k
                 pair_count_difference[pair] += k * word_freq
 
@@ -435,3 +431,55 @@ class BPE_Trainer():
                 # pair completely removed
                 pair_counts.pop(pair, None)
                 pair_to_words.pop(pair, None)
+
+
+    @staticmethod
+    def _merge_pair_and_count_pair_difference(
+        old_encoding: list[int],
+        bytes_a: int,
+        bytes_b: int,
+        new_id: int,
+    ) -> tuple[list[int], dict[tuple[int, int], int]]:
+
+        # If CPython implementation is available, use it;
+        # Otherwise, fallback to Python implementation.
+        if _HAS_NATIVE:
+            return _merge_pair_and_count_pair_difference(
+                old_encoding, 
+                bytes_a, 
+                bytes_b, 
+                new_id
+            )
+
+        # count old pairs in this word
+        old_pair_counter = Counter()
+        for i in range(len(old_encoding) - 1):
+            old_pair_counter[(old_encoding[i], old_encoding[i+1])] += 1
+
+        # merge pair_to_be_merged
+        new_encoding = []
+        i = 0
+        while i < len(old_encoding):
+            if (
+                i < len(old_encoding) - 1
+                and old_encoding[i] == bytes_a
+                and old_encoding[i+1] == bytes_b
+            ):
+                # merge
+                new_encoding.append(new_id)
+                i += 2
+            else:
+                # copy old token
+                new_encoding.append(old_encoding[i])
+                i += 1
+
+        # count new pairs
+        new_pair_counter = Counter()
+        for i in range(len(new_encoding) - 1):
+            new_pair_counter[(new_encoding[i], new_encoding[i+1])] += 1
+
+        # transform counters to flat data structure, for easier comparison to CPython implementation
+        old_pairs = [(a, b, k) for (a, b), k in old_pair_counter.items()]
+        new_pairs = [(a, b, k) for (a, b), k in new_pair_counter.items()]
+
+        return old_pairs, new_encoding, new_pairs
