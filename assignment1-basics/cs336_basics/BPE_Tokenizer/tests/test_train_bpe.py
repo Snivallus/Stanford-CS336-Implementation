@@ -219,7 +219,7 @@ class TestBPETrainingExample(unittest.TestCase):
 
 if __name__ == "__main__":
     # Redirect unittest output to a log file
-    log_path = "cs336_basics/BPE_Tokenizer/tests/train_bpe_test.txt"
+    log_path = "cs336_basics/BPE_Tokenizer/tests/test_train_bpe.txt"
     os.makedirs(os.path.dirname(log_path), exist_ok=True)
 
     original_stdout = sys.stdout
