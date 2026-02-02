@@ -15,8 +15,7 @@ BPE_Tokenizer/
 ├── bpe_cpython/       # Optional CPython acceleration
 │   └── README.md
 └── tests/             # Tests for the BPE implementation
-    ├── train_bpe_test.py
-    └── train_bpe_test.txt
+    └── train_bpe_test.py
 ```
 
 ---
@@ -29,8 +28,8 @@ Run the standard test suite from the project root:
 uv run pytest tests/test_train_bpe.py
 ```
 
-Run extended tests (results are saved to `cs336_basics/BPE_Tokenizer/tests/train_bpe_test.txt`):
+Run extended tests (results are saved to `cs336_basics/BPE_Tokenizer/tests`):
 
 ```bash
-python cs336_basics/BPE_Tokenizer/tests/train_bpe_test.py
+uv run pytest cs336_basics/BPE_Tokenizer/tests
 ```

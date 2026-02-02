@@ -14,6 +14,7 @@ import os
 import sys
 from io import StringIO
 import tempfile
+import pickle
 import cProfile
 import pstats
 import psutil
@@ -91,7 +92,14 @@ class TestBPETrainingExample(unittest.TestCase):
 
 
     # cProfile helper function
-    def _profile_train_bpe(self, input_path, vocab_size, special_tokens):
+    def _profile_train_bpe(
+        self, 
+        input_path, 
+        vocab_size, 
+        special_tokens, 
+        vocab_path,
+        merges_path
+    ):
         """
         Profile train_bpe on a real (but fixed) dataset to detect
         obvious performance regressions.
@@ -127,6 +135,32 @@ class TestBPETrainingExample(unittest.TestCase):
 
         profiler.disable()
 
+        # --- Serialize results for inspection ---
+        with open(vocab_path, "wb") as f:
+            pickle.dump(vocab, f)
+
+        with open(merges_path, "wb") as f:
+            pickle.dump(merges, f)
+
+        # --- Longest token diagnostic ---
+        longest_token_id, longest_token_bytes = max(
+            vocab.items(),
+            key = lambda kv: len(kv[1]),
+        )
+        # Attempt to decode token bytes to UTF-8, fallback to placeholder for non-decodable sequences
+        try:
+            longest_token_str = longest_token_bytes.decode("utf-8")
+        except UnicodeDecodeError:
+            longest_token_str = "<non-decodable>"
+
+        print(
+            "Longest token:\n"
+            f"\t-id       = {longest_token_id}\n"
+            f"\t-bytes    = {longest_token_bytes!r}\n"
+            f"\t-length   = {len(longest_token_bytes)}\n"
+            f"\t-utf8_str = {longest_token_str}"
+        )
+
         # --- Memory usage ---
         mem_info = process.memory_info()
         # the portion of the process’s memory that is actually loaded in physical RAM
@@ -156,7 +190,9 @@ class TestBPETrainingExample(unittest.TestCase):
         self._profile_train_bpe(
             input_path = "../datasets/TinyStoriesV2-GPT4-train.txt",
             vocab_size = 256 + 1 + 9743, # bytes + <|endoftext|> + merge budget
-            special_tokens=["<|endoftext|>"]
+            special_tokens=["<|endoftext|>"],
+            vocab_path = "cs336_basics/BPE_Tokenizer/tests/TinyStoriesV2-GPT4-train-vocab.pkl",
+            merges_path = "cs336_basics/BPE_Tokenizer/tests/TinyStoriesV2-GPT4-train-merges.pkl"
         )
 
 
@@ -164,7 +200,9 @@ class TestBPETrainingExample(unittest.TestCase):
         self._profile_train_bpe(
             input_path = "../datasets/owt_train.txt",
             vocab_size = 256 + 1 + 31743, # bytes + <|endoftext|> + merge budget
-            special_tokens = ["<|endoftext|>"]
+            special_tokens = ["<|endoftext|>"],
+            vocab_path = "cs336_basics/BPE_Tokenizer/tests/owt_train-vocab.pkl",
+            merges_path = "cs336_basics/BPE_Tokenizer/tests/owt_train-merges.pkl"
         )
 
 
