@@ -14,7 +14,7 @@ bpe_cpython/
 ├── init.py
 ├── _merge_pair_and_count_pair_difference.pyx # Cython source
 ├── _merge_pair_and_count_pair_difference.c # Generated C source
-├── _merge_pair_and_count_pair_difference.cpython-311-x86_64-linux-gnu.so # Compiled extension
+└── _merge_pair_and_count_pair_difference.cpython-311-x86_64-linux-gnu.so # Compiled extension
 ```
 
 - **`_merge_pair_and_count_pair_difference.pyx`**  

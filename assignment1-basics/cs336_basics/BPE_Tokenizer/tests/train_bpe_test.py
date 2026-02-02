@@ -16,6 +16,7 @@ from io import StringIO
 import tempfile
 import cProfile
 import pstats
+import psutil
 import unittest
 
 from cs336_basics.BPE_Tokenizer.train_bpe import BPE_Trainer # BPE training implementation
@@ -70,7 +71,7 @@ class TestBPETrainingExample(unittest.TestCase):
             vocab, merges = bpe_trainer.train_bpe(
                 input_path = input_path,
                 vocab_size = 256 + 1 + 6,  # bytes + <|endoftext|> + 6 merges
-                special_tokens = ["<|endoftext|>"],
+                special_tokens = ["<|endoftext|>"]
             )
 
             self.assertGreaterEqual(
@@ -98,7 +99,7 @@ class TestBPETrainingExample(unittest.TestCase):
         This test:
         - Runs BPE training on TinyStoriesV2-GPT4 or OpenWebText
         - Collects cProfile statistics
-        - Asserts basic sanity conditions (non-empty vocab / merges)
+        - Monitors memory usage during training
 
         Note:
         This is NOT a strict performance benchmark, but a profiling
@@ -106,25 +107,38 @@ class TestBPETrainingExample(unittest.TestCase):
         """
         self.assertTrue(
             os.path.exists(input_path),
-            f"Dataset not found at expected path: {input_path}",
+            f"Dataset not found at expected path: {input_path}"
         )
+
+        # monitor memory usage
+        process = psutil.Process(os.getpid())
 
         bpe_trainer = BPE_Trainer()
 
+        # profile train_bpe
         profiler = cProfile.Profile()
         profiler.enable()
 
         vocab, merges = bpe_trainer.train_bpe(
-            input_path=input_path,
-            vocab_size=vocab_size,
-            special_tokens=special_tokens,
+            input_path = input_path,
+            vocab_size = vocab_size,
+            special_tokens = special_tokens
         )
 
         profiler.disable()
 
+        # --- Memory usage ---
+        mem_info = process.memory_info()
+        # the portion of the process’s memory that is actually loaded in physical RAM
+        print(f"RSS memory (resident): {mem_info.rss / 1024**2:.2f} MB")
+        # the total amount of virtual address space the process has access to
+        print(f"VMS memory (virtual): {mem_info.vms / 1024**2:.2f} MB")
+
         # --- Basic sanity assertions ---
-        self.assertGreater(len(vocab), 256)
+        self.assertGreater(len(vocab), 256 + len(special_tokens))
+        self.assertLessEqual(len(vocab), vocab_size)
         self.assertGreater(len(merges), 0)
+        self.assertLessEqual(len(merges), vocab_size - 256 - len(special_tokens))
 
         # --- Print profiling summary ---
         s = StringIO()
@@ -141,16 +155,16 @@ class TestBPETrainingExample(unittest.TestCase):
     def test_02_tinystories_profile_train_bpe(self):
         self._profile_train_bpe(
             input_path = "../datasets/TinyStoriesV2-GPT4-train.txt",
-            vocab_size = 256 + 1 + 100, # bytes + <|endoftext|> + small merge budget
-            special_tokens=["<|endoftext|>"],
+            vocab_size = 256 + 1 + 9743, # bytes + <|endoftext|> + merge budget
+            special_tokens=["<|endoftext|>"]
         )
 
 
     def test_03_OpenWebText_profile_train_bpe(self):
         self._profile_train_bpe(
             input_path = "../datasets/owt_train.txt",
-            vocab_size = 256 + 1 + 100, # bytes + <|endoftext|> + small merge budget
-            special_tokens = ["<|endoftext|>"],
+            vocab_size = 256 + 1 + 31743, # bytes + <|endoftext|> + merge budget
+            special_tokens = ["<|endoftext|>"]
         )
 
 

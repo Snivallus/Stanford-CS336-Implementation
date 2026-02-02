@@ -1,90 +1,94 @@
 train_bpe: args = Namespace(max_num_counters=64)
-_pretokenize_and_count_words: 0.016087661497294903 sec for 8 unique words
+_pretokenize_and_count_words: 0.015001908876001835 sec for 8 unique words
 _count_pairs: 0.00 sec for 14 unique pairs
 _build_heap: 0.00 sec for 14 heap size
-_merge: 0.0003699474036693573 sec for 6 merges
+_merge: 0.00017926283180713654 sec for 6 merges
 
 train_bpe: args = Namespace(max_num_counters=64)
-_pretokenize_and_count_words: 12.419433229602873 sec for 59941 unique words
+_pretokenize_and_count_words: 13.47865028027445 sec for 59941 unique words
 _count_pairs: 0.44 sec for 2080 unique pairs
 _build_heap: 0.01 sec for 2080 heap size
-_merge: 4.761119754984975 sec for 100 merges
+_merge: 4.068611937575042 sec for 9743 merges
 
+RSS memory (resident): 92.04 MB
+VMS memory (virtual): 320.10 MB
 
 ========== cProfile Results (TinyStoriesV2-GPT4-train.txt) ==========
-         7876498 function calls in 17.663 seconds
+         3129923 function calls in 18.029 seconds
 
    Ordered by: cumulative time
-   List reduced from 286 to 25 due to restriction <25>
+   List reduced from 283 to 25 due to restriction <25>
 
    ncalls  tottime  percall  cumtime  percall filename:lineno(function)
-        1    0.032    0.032   17.663   17.663 train_bpe.py:51(train_bpe)
-        1    0.022    0.022   12.418   12.418 train_bpe.py:139(_pretokenize_and_count_mp)
-       65    0.001    0.000   11.196    0.172 pool.py:853(next)
-       56    0.001    0.000   11.195    0.200 threading.py:295(wait)
-      227   11.194    0.049   11.194    0.049 {method 'acquire' of '_thread.lock' objects}
-      100    0.003    0.000    4.760    0.048 train_bpe.py:291(_merge_a_pair)
-      100    1.720    0.017    4.743    0.047 train_bpe.py:349(_update_pair_count_of_affected_words)
-   116371    1.714    0.000    2.605    0.000 train_bpe.py:425(_merge_pair_and_count_pair_difference)
-   239814    0.761    0.000    1.074    0.000 __init__.py:660(update)
-        1    0.410    0.410    0.443    0.443 train_bpe.py:267(_count_pairs)
-   746416    0.334    0.000    0.334    0.000 __init__.py:728(__delitem__)
-   968391    0.304    0.000    0.304    0.000 {method 'get' of 'dict' objects}
-   239750    0.192    0.000    0.240    0.000 __init__.py:587(__init__)
-   116371    0.208    0.000    0.208    0.000 train_bpe.py:470(<listcomp>)
-  2377886    0.193    0.000    0.193    0.000 __init__.py:601(__missing__)
-   116371    0.131    0.000    0.131    0.000 train_bpe.py:471(<listcomp>)
-  1922048    0.126    0.000    0.126    0.000 {built-in method builtins.len}
-   762707    0.067    0.000    0.067    0.000 {method 'append' of 'list' objects}
-       65    0.000    0.000    0.060    0.001 util.py:208(__call__)
-        1    0.000    0.000    0.059    0.059 pool.py:738(__exit__)
-        1    0.000    0.000    0.059    0.059 pool.py:654(terminate)
-        1    0.000    0.000    0.059    0.059 pool.py:680(_terminate_pool)
-        1    0.000    0.000    0.054    0.054 context.py:115(Pool)
-        1    0.000    0.000    0.054    0.054 pool.py:183(__init__)
-        1    0.000    0.000    0.053    0.053 train_bpe.py:197(find_chunk_boundaries)
+        1    0.044    0.044   18.029   18.029 train_bpe.py:56(train_bpe)
+        1    0.022    0.022   13.477   13.477 train_bpe.py:144(_pretokenize_and_count_mp)
+       65    0.001    0.000   12.431    0.191 pool.py:853(next)
+       67    0.001    0.000   12.430    0.186 threading.py:295(wait)
+      271   12.430    0.046   12.430    0.046 {method 'acquire' of '_thread.lock' objects}
+     9743    0.110    0.000    4.057    0.000 train_bpe.py:297(_merge_a_pair)
+     9743    2.946    0.000    3.717    0.000 train_bpe.py:356(_update_pair_count_of_affected_words)
+    69421    0.625    0.000    0.871    0.000 __init__.py:660(update)
+        1    0.409    0.409    0.442    0.442 train_bpe.py:273(_count_pairs)
+   173286    0.251    0.000    0.391    0.000 max_heapq.py:23(heappush_max)
+   277707    0.258    0.000    0.258    0.000 train_bpe.py:436(_merge_pair_and_count_pair_difference)
+   958733    0.246    0.000    0.246    0.000 {method 'get' of 'dict' objects}
+    69357    0.163    0.000    0.173    0.000 __init__.py:587(__init__)
+    74329    0.022    0.000    0.143    0.000 max_heapq.py:32(heappop_max)
+    74329    0.121    0.000    0.121    0.000 {built-in method _heapq._heappop_max}
+   173286    0.111    0.000    0.111    0.000 heapq.py:280(_siftdown_max)
+       65    0.000    0.000    0.073    0.001 util.py:208(__call__)
+        1    0.000    0.000    0.072    0.072 pool.py:738(__exit__)
+        1    0.000    0.000    0.072    0.072 pool.py:654(terminate)
+        1    0.000    0.000    0.072    0.072 pool.py:680(_terminate_pool)
+   748760    0.062    0.000    0.062    0.000 __init__.py:601(__missing__)
+        1    0.000    0.000    0.049    0.049 context.py:115(Pool)
+        1    0.000    0.000    0.049    0.049 pool.py:183(__init__)
+        1    0.000    0.000    0.047    0.047 pool.py:305(_repopulate_pool)
+        1    0.002    0.002    0.047    0.047 pool.py:314(_repopulate_pool_static)
 
 
 
 train_bpe: args = Namespace(max_num_counters=64)
-_pretokenize_and_count_words: 84.03196289949119 sec for 6424740 unique words
-_count_pairs: 77.37 sec for 16219 unique pairs
+_pretokenize_and_count_words: 86.76374496147037 sec for 6424740 unique words
+_count_pairs: 77.48 sec for 16219 unique pairs
 _build_heap: 0.03 sec for 16219 heap size
-_merge: 738.7519129924476 sec for 100 merges
+_merge: 902.6634027250111 sec for 31743 merges
 
+RSS memory (resident): 5851.82 MB
+VMS memory (virtual): 6110.16 MB
 
 ========== cProfile Results (owt_train.txt) ==========
-         972497899 function calls in 911.914 seconds
+         220921739 function calls in 1078.089 seconds
 
    Ordered by: cumulative time
-   List reduced from 286 to 25 due to restriction <25>
+   List reduced from 283 to 25 due to restriction <25>
 
    ncalls  tottime  percall  cumtime  percall filename:lineno(function)
-        1   11.954   11.954  911.914  911.914 train_bpe.py:51(train_bpe)
-      100    0.033    0.000  738.560    7.386 train_bpe.py:291(_merge_a_pair)
-      100  282.418    2.824  737.041    7.370 train_bpe.py:349(_update_pair_count_of_affected_words)
- 12233143  271.334    0.000  396.294    0.000 train_bpe.py:425(_merge_pair_and_count_pair_difference)
-        1    0.671    0.671   84.010   84.010 train_bpe.py:139(_pretokenize_and_count_mp)
-        1   73.011   73.011   77.369   77.369 train_bpe.py:267(_count_pairs)
-       65    0.001    0.000   53.476    0.823 pool.py:853(next)
-       47    0.001    0.000   53.475    1.138 threading.py:295(wait)
-      191   53.474    0.280   53.474    0.280 {method 'acquire' of '_thread.lock' objects}
-107952088   50.173    0.000   50.173    0.000 __init__.py:728(__delitem__)
- 24495478   18.942    0.000   34.666    0.000 __init__.py:660(update)
- 12233143   33.416    0.000   33.416    0.000 train_bpe.py:470(<listcomp>)
-353163939   28.552    0.000   28.552    0.000 __init__.py:601(__missing__)
- 24495414   19.813    0.000   25.193    0.000 __init__.py:587(__init__)
- 12233143   21.542    0.000   21.542    0.000 train_bpe.py:471(<listcomp>)
-261825357   17.209    0.000   17.209    0.000 {built-in method builtins.len}
- 29929476   14.243    0.000   14.243    0.000 {method 'get' of 'dict' objects}
-109372015    9.419    0.000    9.419    0.000 {method 'append' of 'list' objects}
- 24466452    3.562    0.000    3.562    0.000 {method 'items' of 'dict' objects}
-      104    1.491    0.014    1.491    0.014 {function Counter.update at 0x7f255dc520c0}
-      100    0.000    0.000    1.481    0.015 __init__.py:721(copy)
-       65    0.000    0.000    0.266    0.004 util.py:208(__call__)
-        1    0.000    0.000    0.265    0.265 pool.py:738(__exit__)
-        1    0.000    0.000    0.265    0.265 pool.py:654(terminate)
-        1    0.000    0.000    0.265    0.265 pool.py:680(_terminate_pool)
+        1   12.446   12.446 1078.089 1078.089 train_bpe.py:56(train_bpe)
+    31743    3.484    0.000  901.389    0.028 train_bpe.py:297(_merge_a_pair)
+    31743  754.721    0.024  889.801    0.028 train_bpe.py:356(_update_pair_count_of_affected_words)
+        1    0.686    0.686   86.750   86.750 train_bpe.py:144(_pretokenize_and_count_mp)
+        1   73.111   73.111   77.483   77.483 train_bpe.py:273(_count_pairs)
+ 35172372   67.400    0.000   67.400    0.000 train_bpe.py:436(_merge_pair_and_count_pair_difference)
+       65    0.002    0.000   58.502    0.900 pool.py:853(next)
+       67    0.001    0.000   58.500    0.873 threading.py:295(wait)
+      271   58.499    0.216   58.499    0.216 {method 'acquire' of '_thread.lock' objects}
+  7482501   40.521    0.000   46.967    0.000 max_heapq.py:23(heappush_max)
+  3530131   13.234    0.000   27.455    0.000 __init__.py:660(update)
+  3530067   16.599    0.000   17.107    0.000 __init__.py:587(__init__)
+ 29893184   14.210    0.000   14.210    0.000 {method 'get' of 'dict' objects}
+109230858    8.869    0.000    8.869    0.000 __init__.py:601(__missing__)
+  1102306    0.324    0.000    6.601    0.000 max_heapq.py:32(heappop_max)
+  1102306    6.277    0.000    6.277    0.000 {built-in method _heapq._heappop_max}
+  7482501    5.281    0.000    5.281    0.000 heapq.py:280(_siftdown_max)
+ 13907272    1.047    0.000    1.047    0.000 {built-in method builtins.len}
+  7514384    0.547    0.000    0.547    0.000 {method 'append' of 'list' objects}
+       65    0.000    0.000    0.288    0.004 util.py:208(__call__)
+        1    0.000    0.000    0.288    0.288 pool.py:738(__exit__)
+        1    0.000    0.000    0.288    0.288 pool.py:654(terminate)
+        1    0.000    0.000    0.288    0.288 pool.py:680(_terminate_pool)
+     2152    0.001    0.000    0.248    0.000 popen_fork.py:24(poll)
+     2152    0.247    0.000    0.247    0.000 {built-in method posix.waitpid}
 
 
 
