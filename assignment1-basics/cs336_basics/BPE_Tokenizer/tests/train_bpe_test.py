@@ -15,9 +15,11 @@ import sys
 from io import StringIO
 import tempfile
 import pickle
+import time
 import cProfile
 import pstats
 import psutil
+from typing import List
 import unittest
 
 from cs336_basics.BPE_Tokenizer.train_bpe import BPE_Trainer # BPE training implementation
@@ -94,48 +96,44 @@ class TestBPETrainingExample(unittest.TestCase):
     # cProfile helper function
     def _profile_train_bpe(
         self, 
-        input_path, 
-        vocab_size, 
-        special_tokens, 
-        vocab_path,
-        merges_path
+        input_path: str, 
+        vocab_size: int, 
+        special_tokens: List[str], 
+        vocab_path: str,
+        merges_path: str,
+        max_time_in_hour: float = None,
+        max_memory_in_GB: float = None,
     ):
         """
-        Profile train_bpe on a real (but fixed) dataset to detect
-        obvious performance regressions.
+        Profile train_bpe on a real dataset to detect obvious performance regressions.
 
-        This test:
         - Runs BPE training on TinyStoriesV2-GPT4 or OpenWebText
         - Collects cProfile statistics
-        - Monitors memory usage during training
-
-        Note:
-        This is NOT a strict performance benchmark, but a profiling
-        smoke test to surface major bottlenecks during development.
+        - Monitors memory usage and optionally enforces time/memory limits
         """
         self.assertTrue(
             os.path.exists(input_path),
             f"Dataset not found at expected path: {input_path}"
         )
 
-        # monitor memory usage
         process = psutil.Process(os.getpid())
-
         bpe_trainer = BPE_Trainer()
 
-        # profile train_bpe
+        # --- profile train_bpe ---
         profiler = cProfile.Profile()
         profiler.enable()
+        start_time = time.perf_counter()
 
         vocab, merges = bpe_trainer.train_bpe(
-            input_path = input_path,
-            vocab_size = vocab_size,
-            special_tokens = special_tokens
+            input_path=input_path,
+            vocab_size=vocab_size,
+            special_tokens=special_tokens
         )
 
+        end_time = time.perf_counter()
         profiler.disable()
 
-        # --- Serialize results for inspection ---
+        # --- Serialize results ---
         with open(vocab_path, "wb") as f:
             pickle.dump(vocab, f)
 
@@ -143,11 +141,7 @@ class TestBPETrainingExample(unittest.TestCase):
             pickle.dump(merges, f)
 
         # --- Longest token diagnostic ---
-        longest_token_id, longest_token_bytes = max(
-            vocab.items(),
-            key = lambda kv: len(kv[1]),
-        )
-        # Attempt to decode token bytes to UTF-8, fallback to placeholder for non-decodable sequences
+        longest_token_id, longest_token_bytes = max(vocab.items(), key=lambda kv: len(kv[1]))
         try:
             longest_token_str = longest_token_bytes.decode("utf-8")
         except UnicodeDecodeError:
@@ -163,10 +157,24 @@ class TestBPETrainingExample(unittest.TestCase):
 
         # --- Memory usage ---
         mem_info = process.memory_info()
-        # the portion of the process’s memory that is actually loaded in physical RAM
-        print(f"RSS memory (resident): {mem_info.rss / 1024**2:.2f} MB")
-        # the total amount of virtual address space the process has access to
-        print(f"VMS memory (virtual): {mem_info.vms / 1024**2:.2f} MB")
+        rss_GB = mem_info.rss / 1024**3 # the portion of the process’s memory that is actually loaded in physical RAM
+        vms_GB = mem_info.vms / 1024**3 # the total amount of virtual address space the process has access to
+        print(f"RSS memory (resident): {rss_GB:.2f} GB")
+        print(f"VMS memory (virtual):  {vms_GB:.2f} GB")
+
+        # --- Time and memory checks ---
+        elapsed_hours = (end_time - start_time) / 3600
+        if max_time_in_hour is not None:
+            self.assertLessEqual(
+                elapsed_hours, max_time_in_hour,
+                f"Training exceeded max_time_in_hour = {max_time_in_hour} h, took {elapsed_hours:.2f} h"
+            )
+
+        if max_memory_in_GB is not None:
+            self.assertLessEqual(
+                rss_GB, max_memory_in_GB,
+                f"Training exceeded max_memory_in_GB = {max_memory_in_GB} GB, used {rss_GB:.2f} GB"
+            )
 
         # --- Basic sanity assertions ---
         self.assertGreater(len(vocab), 256 + len(special_tokens))
@@ -180,8 +188,7 @@ class TestBPETrainingExample(unittest.TestCase):
         stats.strip_dirs().sort_stats("cumulative").print_stats(25)
 
         print(
-            "\n========== cProfile Results "
-            f"({os.path.basename(input_path)}) =========="
+            f"\n========== cProfile Results ({os.path.basename(input_path)}) =========="
         )
         print(s.getvalue())
 
@@ -192,7 +199,9 @@ class TestBPETrainingExample(unittest.TestCase):
             vocab_size = 256 + 1 + 9743, # bytes + <|endoftext|> + merge budget
             special_tokens=["<|endoftext|>"],
             vocab_path = "cs336_basics/BPE_Tokenizer/tests/TinyStoriesV2-GPT4-train-vocab.pkl",
-            merges_path = "cs336_basics/BPE_Tokenizer/tests/TinyStoriesV2-GPT4-train-merges.pkl"
+            merges_path = "cs336_basics/BPE_Tokenizer/tests/TinyStoriesV2-GPT4-train-merges.pkl", 
+            max_time_in_hour = 0.5,
+            max_memory_in_GB = 30 
         )
 
 
@@ -202,7 +211,9 @@ class TestBPETrainingExample(unittest.TestCase):
             vocab_size = 256 + 1 + 31743, # bytes + <|endoftext|> + merge budget
             special_tokens = ["<|endoftext|>"],
             vocab_path = "cs336_basics/BPE_Tokenizer/tests/owt_train-vocab.pkl",
-            merges_path = "cs336_basics/BPE_Tokenizer/tests/owt_train-merges.pkl"
+            merges_path = "cs336_basics/BPE_Tokenizer/tests/owt_train-merges.pkl",
+            max_time_in_hour = 12,
+            max_memory_in_GB = 100 
         )
 
 

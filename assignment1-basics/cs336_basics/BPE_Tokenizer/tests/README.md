@@ -3,7 +3,7 @@
 After running the BPE training test from the **project root**:
 
 ```bash
-python cs336_basics/BPE_Tokenizer/tests/train_bpe_test.py
+uv run pytest cs336_basics/BPE_Tokenizer/tests
 ```
 
 the test will train a BPE vocabulary on fixed datasets and serialize the resulting artifacts for inspection.  

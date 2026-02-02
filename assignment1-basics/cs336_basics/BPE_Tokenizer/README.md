@@ -15,6 +15,7 @@ BPE_Tokenizer/
 ├── bpe_cpython/       # Optional CPython acceleration
 │   └── README.md
 └── tests/             # Tests for the BPE implementation
+    ├── README.md
     └── train_bpe_test.py
 ```
 
