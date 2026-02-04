@@ -10,13 +10,16 @@ This folder contains an implementation of **Byte Pair Encoding (BPE) training** 
 BPE_Tokenizer/
 ├── README.md          # This file
 ├── __init__.py
-├── train_bpe.py       # Main BPE training logic
+├── train_bpe.py       # BPE trainer
+├── tokenizer.py       # BPE tokenizer
 ├── max_heapq.py       # Compatibility max-heap wrapper around heapq
 ├── bpe_cpython/       # Optional CPython acceleration
-│   └── README.md
+│   ├── README.md
+│   └── _merge_pair_and_count_pair_difference.pyx
 └── tests/             # Tests for the BPE implementation
     ├── README.md
-    └── test_train_bpe.py
+    ├── test_01_train_bpe.py
+    └── test_02_tokenizer.py
 ```
 
 ---

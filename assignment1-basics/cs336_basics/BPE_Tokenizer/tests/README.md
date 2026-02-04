@@ -12,8 +12,10 @@ You should observe the following folder structure inside `cs336_basics/BPE_Token
 ```bash
 tests/
 ├── README.md # This file
-├── test_train_bpe.py  # The test script
-├── test_train_bpe.txt # The test log
+├── test_01_train_bpe.py  # The test script of BPE trainer
+├── test_01_train_bpe.txt # The test log of BPE trainer
+├── test_02_tokenizer.py  # The test script of BPE tokenizer
+├── test_02_tokenizer.txt # The test log of BPE tokenizer
 ├── TinyStoriesV2-GPT4-train-vocab.pkl  # The vocabulary trained on TinyStories 
 ├── TinyStoriesV2-GPT4-train-merges.pkl # The merges trained on TinyStories
 ├── owt_train-vocab.pkl  # The vocabulary trained on OpenWebText

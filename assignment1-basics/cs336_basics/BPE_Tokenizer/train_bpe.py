@@ -15,25 +15,12 @@ import regex as re
 from collections import defaultdict, Counter
 import multiprocessing as mp
 import time
-import argparse
 from typing import (
-    BinaryIO,
     List,
     Dict,
     Tuple,
     DefaultDict  
 )
-
-Word = bytes
-TokenId = int
-Pair = Tuple[TokenId, TokenId]
-
-WordEncoding = List[TokenId] # list of token IDs representing a word
-Vocab = Dict[TokenId, bytes]
-WordCounter = Counter[Word]
-PairCounter = DefaultDict[Pair, int]
-PairStrings = Dict[Pair, Tuple[bytes, bytes]]  # map from token ID pair to byte string representation
-PairToWords = DefaultDict[Pair, Counter[Word]] # map from pair to affected words with occurrence counts
 
 import cs336_basics.BPE_Tokenizer.max_heapq as maxheap
 # try to import CPython native implementation
@@ -46,20 +33,41 @@ except ImportError:
             Fallback to its Python implementation.
     """)
     _HAS_NATIVE = False
+from cs336_basics.utils import find_chunk_boundaries
 
 
-MIN_CHUNK_SIZE = 4 * 1024 * 1024 # 4 MB
 N_BYTES = 256
 MAX_NUM_COUNTERS = 64
+MIN_CHUNK_SIZE = 1024 * 1024 # 1 MB
+
+Word = bytes
+TokenId = int
+Pair = Tuple[TokenId, TokenId]
+
+WordEncoding = List[TokenId] # list of token IDs representing a word
+Vocab = Dict[TokenId, bytes]
+Merge = Tuple[bytes, bytes]
+WordCounter = Counter[Word]
+PairCounter = DefaultDict[Pair, int]
+PairStrings = Dict[Pair, Tuple[bytes, bytes]]  # map from token ID pair to byte string representation
+PairToWords = DefaultDict[Pair, Counter[Word]] # map from pair to affected words with occurrence counts
+
 
 class BPE_Trainer():
+    def __init__(self):
+        # GPT-2 regex pattern for pretokenization
+        self.gpt2_pattern = re.compile(
+            rb"""'(?:[sdmt]|ll|ve|re)| ?[A-Za-z]+| ?\d+| ?[^\sA-Za-z\d]+|\s+(?!\S)|\s+"""
+        )
+
     def train_bpe(
         self,
         input_path: str,
         vocab_size: int,
         special_tokens: List[str],
-        *args: str,
-    ) -> Tuple[Vocab, List[Tuple[bytes, bytes]]]:
+        max_num_counters: int = MAX_NUM_COUNTERS,
+        min_chunk_size: int = MIN_CHUNK_SIZE,
+    ) -> Tuple[Vocab, List[Merge]]:
         """
         Train a Byte-Pair Encoding (BPE) tokenizer on a given dataset.
 
@@ -80,36 +88,24 @@ class BPE_Trainer():
         - input_path (str): Path to the training dataset (raw text or binary).
         - vocab_size (int): Desired final vocabulary size after BPE merges.
         - special_tokens (List[str]): List of special tokens to include in the vocabulary.
-        - *args (str): Optional command-line arguments, currently supports:
-            - "--max_num_counters" / "-c": maximum number of parallel counting processes.
+        - max_num_counters (int): maximum number of parallel counting processes.
+        - min_chunk_size (int): Minimum size of each chunk in bytes.
 
         Returns:
         - vocab (Vocab): Dictionary mapping token IDs to their byte string representation.
-        - merges (List[Tuple[bytes, bytes]]): List of byte pair merges applied during training.
+        - merges (List[Merge]): List of byte pair merges applied during training.
         """
-
-        parser = argparse.ArgumentParser()
-        parser.add_argument(
-            "--max_num_counters", 
-            "-c",                
-            type = int, 
-            default = MAX_NUM_COUNTERS, 
-            help = "maximum number of parallel counting processes"
-        )
-
-        args = parser.parse_args(args)
-        print(f"train_bpe: {args = }")
-        max_num_counters = args.max_num_counters
 
         # pretokenize and count words
         start_time = time.perf_counter()
         word_counts = self._pretokenize_and_count_mp(
             input_path, 
             special_tokens, 
-            max_num_counters
+            max_num_counters, 
+            min_chunk_size
         )
         end_time = time.perf_counter()
-        print(f"_pretokenize_and_count_words: {end_time - start_time} sec for {len(word_counts)} unique words")
+        print(f"\n_pretokenize_and_count_words: {end_time - start_time} sec for {len(word_counts)} unique words")
         
         # initialize vocabulary
         vocab = {i: bytes([i]) for i in range(N_BYTES)} # every byte
@@ -174,6 +170,7 @@ class BPE_Trainer():
         input_path: str,
         special_tokens: List[str],
         max_num_counters: int,
+        min_chunk_size: int,
     ) -> WordCounter:
         """
         Pre-tokenize the input text and count word frequencies in parallel.
@@ -195,115 +192,63 @@ class BPE_Trainer():
         - input_path (str): Path to the input text or binary file.
         - special_tokens (List[str]): List of special tokens to recognize as separate words.
         - max_num_counters (int): Maximum number of parallel counting processes.
+        - min_chunk_size (int): Minimum size of each chunk in bytes.
 
         Returns:
         - WordCounter: Counter object mapping each word (bytes) to its frequency.
         """
 
-        # GPT-2 regex
-        gpt2_pattern = re.compile(
-            rb"""'(?:[sdmt]|ll|ve|re)| ?[A-Za-z]+| ?\d+| ?[^\sA-Za-z\d]+|\s+(?!\S)|\s+"""
-        )
+        # find chunk boundaries
+        with open(input_path, "rb") as f:
+            boundaries = find_chunk_boundaries(
+                file = f,
+                split_special_token = b"<|endoftext|>",
+                desired_num_chunks = max_num_counters,
+                min_chunk_size = min_chunk_size
+            )
 
         # build split pattern
-        special_token_pattern = b"|".join(
-            re.escape(token.encode("utf-8")) for token in special_tokens
+        special_tokens = sorted(special_tokens, key = len, reverse = True) # sort by length descending to handle overlaps correctly
+        special_token_pattern = re.compile(
+            b"|".join(
+                re.escape(token.encode("utf-8")) 
+                for token in special_tokens
+            )
         )
-        special_token_pattern = re.compile(special_token_pattern)
 
-        # memory-map the file for shared access
-        with open(input_path, "rb") as f:
-            mm = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
+        # create chunk ranges
+        ranges = [
+            (input_path, boundaries[i], boundaries[i+1], self.gpt2_pattern, special_token_pattern)
+            for i in range(len(boundaries) - 1)
+        ]
 
-            # find chunk boundaries
-            boundaries = self.find_chunk_boundaries(
-                file = f,
-                desired_num_chunks = max_num_counters,
-                split_special_token = b"<|endoftext|>",
-            )
+        # count in parallel and aggregate results
+        word_counts = Counter()
 
-            # create chunk ranges
-            ranges = [
-                (input_path, boundaries[i], boundaries[i+1], gpt2_pattern, special_token_pattern)
-                for i in range(len(boundaries) - 1)
-            ]
+        # leave half CPUs free for OS and I/O
+        num_procs = min(
+            max(1, os.cpu_count() // 2),
+            len(ranges),
+        )
 
-            # count in parallel and aggregate results
-            word_counts = Counter()
+        with mp.Pool(processes = num_procs) as pool:
+            # use imap_unordered to consume results as workers finish
+            for c in pool.imap_unordered(
+                self._count_chunk_worker,
+                ranges,
+                chunksize = 1,
+            ):
+                # aggregate partial counters
+                word_counts.update(c)
 
-            # leave half CPUs free for OS and I/O
-            num_procs = min(
-                max(1, os.cpu_count() // 2),
-                len(ranges),
-            )
-
-            with mp.Pool(processes=num_procs) as pool:
-                # use imap_unordered to consume results as workers finish
-                for c in pool.imap_unordered(
-                    self._count_chunk_process,
-                    ranges,
-                    chunksize=1,
-                ):
-                    # aggregate partial counters
-                    word_counts.update(c)
-
-            mm.close() # close memory-mapped file
-            gc.collect() # force garbage collection to free memory
+        gc.collect() # force garbage collection to free memory
 
         return word_counts
 
 
     @staticmethod
-    def find_chunk_boundaries(
-        file: BinaryIO,
-        desired_num_chunks: int,
-        split_special_token: bytes,
-    ) -> List[int]:
-        """
-        Chunk the file into parts that can be counted independently.
-        May return fewer chunks if the boundaries end up overlapping.
-        """
-        assert isinstance(split_special_token, bytes), "Must represent special token as a bytestring"
-
-        # Get total file size in bytes
-        file.seek(0, os.SEEK_END)
-        file_size = file.tell()
-        file.seek(0)
-
-        chunk_size = file_size // desired_num_chunks
-
-        # Initial guesses for chunk boundary locations, uniformly spaced
-        # Chunks start on previous index, don't include last index
-        chunk_boundaries = [i * chunk_size for i in range(desired_num_chunks + 1)]
-        chunk_boundaries[-1] = file_size
-
-        mini_chunk_size = MIN_CHUNK_SIZE  # Read ahead by MIN_CHUNK_SIZE bytes at a time
-
-        for bi in range(1, len(chunk_boundaries) - 1):
-            initial_position = chunk_boundaries[bi]
-            file.seek(initial_position)  # Start at boundary guess
-            while True:
-                mini_chunk = file.read(mini_chunk_size)  # Read a mini chunk
-
-                # If EOF, this boundary should be at the end of the file
-                if mini_chunk == b"":
-                    chunk_boundaries[bi] = file_size
-                    break
-
-                # Find the special token in the mini chunk
-                found_at = mini_chunk.find(split_special_token)
-                if found_at != -1:
-                    chunk_boundaries[bi] = initial_position + found_at
-                    break
-                initial_position += mini_chunk_size
-
-        # Make sure all boundaries are unique, but might be fewer than desired_num_chunks
-        return sorted(set(chunk_boundaries))
-
-
-    @staticmethod
-    def _count_chunk_process(
-        args: Tuple[str, int, int, re.Pattern[bytes], re.Pattern[bytes]],
+    def _count_chunk_worker(
+        args: Tuple[str, int, int, List[str]],
     ) -> Counter[bytes]:
         """
         Count word occurrences in a chunk of the dataset.
@@ -323,15 +268,18 @@ class BPE_Trainer():
             - input_path (str): Path to the dataset file.
             - start (int): Start byte index of the chunk.
             - end (int): End byte index of the chunk.
-            - gpt2_pattern (re.Pattern[bytes]): Regex for GPT-2 style tokenization.
-            - special_token_pattern (re.Pattern[bytes]): Regex for special tokens.
+            - special_tokens (List[str]): List of special tokens to include in the vocabulary.
 
         Returns:
         - Counter[bytes]: Frequency count of all words/tokens in the chunk.
         """
 
         # unpack args
-        input_path, start, end, gpt2_pattern, special_token_pattern = args
+        (
+            input_path, start, end, 
+            gpt2_pattern, 
+            special_token_pattern
+        ) = args
 
         # split data by special tokens and count in each block
         counter = Counter()
@@ -344,6 +292,7 @@ class BPE_Trainer():
                 for m in gpt2_pattern.finditer(block):
                     counter[m.group(0)] += 1
 
+            del data
             mm.close()
 
         return counter

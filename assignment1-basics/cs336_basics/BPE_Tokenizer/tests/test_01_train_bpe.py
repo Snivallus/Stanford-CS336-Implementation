@@ -15,6 +15,7 @@ import sys
 from io import StringIO
 import tempfile
 import pickle
+import json
 import time
 import cProfile
 import pstats
@@ -22,17 +23,37 @@ import psutil
 from typing import List
 import unittest
 
-from cs336_basics.BPE_Tokenizer.train_bpe import BPE_Trainer # BPE training implementation
+from cs336_basics.BPE_Tokenizer import BPE_Trainer # implementation of BPE Trainer
 from cs336_basics.utils import TeeStdout # Utility to tee stdout to a file
 
-class TestBPETrainingExample(unittest.TestCase):
-    """
-    Unit test based on the stylized BPE example from
-    Sennrich et al. (2016), as described in the assignment.
 
-    This test verifies that the first several merges learned
-    by train_bpe exactly match the expected merge sequence.
+LOG_PATH = "cs336_basics/BPE_Tokenizer/tests/test_01_train_bpe.txt"
+
+
+class TestBPETraining(unittest.TestCase):
     """
+    Unit tests for BPE Trainer
+    """
+    @classmethod
+    def setUpClass(cls):
+        """
+        class setup: tee stdout to a log file
+        """
+        cls.log_path = LOG_PATH
+        os.makedirs(os.path.dirname(cls.log_path), exist_ok=True)
+        cls._orig_stdout = sys.stdout
+        cls._log_file = open(cls.log_path, "w", encoding="utf-8")
+        sys.stdout = TeeStdout(sys.stdout, cls._log_file)
+
+
+    @classmethod
+    def tearDownClass(cls):
+        """
+        class teardown: restore stdout and close log file
+        """
+        sys.stdout = cls._orig_stdout
+        cls._log_file.close()
+
 
     def test_01_sennrich_example_merges(self):
         """
@@ -98,7 +119,9 @@ class TestBPETrainingExample(unittest.TestCase):
         self, 
         input_path: str, 
         vocab_size: int, 
-        special_tokens: List[str], 
+        special_tokens: List[str],
+        max_num_counters: int,
+        min_chunk_size: int,
         vocab_path: str,
         merges_path: str,
         max_time_in_hour: float = None,
@@ -125,9 +148,11 @@ class TestBPETrainingExample(unittest.TestCase):
         start_time = time.perf_counter()
 
         vocab, merges = bpe_trainer.train_bpe(
-            input_path=input_path,
-            vocab_size=vocab_size,
-            special_tokens=special_tokens
+            input_path = input_path,
+            vocab_size = vocab_size,
+            special_tokens = special_tokens,
+            max_num_counters = max_num_counters,
+            min_chunk_size = min_chunk_size
         )
 
         end_time = time.perf_counter()
@@ -139,6 +164,27 @@ class TestBPETrainingExample(unittest.TestCase):
 
         with open(merges_path, "wb") as f:
             pickle.dump(merges, f)
+
+        # --- Also serialize vocab as json ---
+        vocab_json_path = os.path.splitext(vocab_path)[0] + ".json"
+
+        vocab_json = {}
+        for token_id, token_bytes in vocab.items():
+            token_str = token_bytes.decode("utf-8", errors = "replace")
+            vocab_json[token_str] = token_id
+
+        with open(vocab_json_path, "w", encoding="utf-8") as f:
+            json.dump(vocab_json, f, ensure_ascii = False, indent = 2)
+
+        # --- Also serialize merges as txt using repr() ---
+        merges_txt_path = os.path.splitext(merges_path)[0] + ".txt"
+        
+        with open(merges_txt_path, "w", encoding="utf-8") as f:
+            for a_bytes, b_bytes in merges:
+                # convert bytes -> repr string for safe storage
+                a_str = repr(a_bytes)
+                b_str = repr(b_bytes)
+                f.write(f"{a_str} {b_str}\n")
 
         # --- Longest token diagnostic ---
         longest_token_id, longest_token_bytes = max(vocab.items(), key=lambda kv: len(kv[1]))
@@ -197,7 +243,9 @@ class TestBPETrainingExample(unittest.TestCase):
         self._profile_train_bpe(
             input_path = "../datasets/TinyStoriesV2-GPT4-train.txt",
             vocab_size = 256 + 1 + 9743, # bytes + <|endoftext|> + merge budget
-            special_tokens=["<|endoftext|>"],
+            special_tokens = ["<|endoftext|>"],
+            max_num_counters = 64,
+            min_chunk_size = 4 * 1024 * 1024, # 4 MB
             vocab_path = "cs336_basics/BPE_Tokenizer/tests/TinyStoriesV2-GPT4-train-vocab.pkl",
             merges_path = "cs336_basics/BPE_Tokenizer/tests/TinyStoriesV2-GPT4-train-merges.pkl", 
             max_time_in_hour = 0.5,
@@ -210,6 +258,8 @@ class TestBPETrainingExample(unittest.TestCase):
             input_path = "../datasets/owt_train.txt",
             vocab_size = 256 + 1 + 31743, # bytes + <|endoftext|> + merge budget
             special_tokens = ["<|endoftext|>"],
+            max_num_counters = 64,
+            min_chunk_size = 4 * 1024 * 1024, # 4 MB
             vocab_path = "cs336_basics/BPE_Tokenizer/tests/owt_train-vocab.pkl",
             merges_path = "cs336_basics/BPE_Tokenizer/tests/owt_train-merges.pkl",
             max_time_in_hour = 12,
@@ -219,7 +269,7 @@ class TestBPETrainingExample(unittest.TestCase):
 
 if __name__ == "__main__":
     # Redirect unittest output to a log file
-    log_path = "cs336_basics/BPE_Tokenizer/tests/test_train_bpe.txt"
+    log_path = LOG_PATH
     os.makedirs(os.path.dirname(log_path), exist_ok=True)
 
     original_stdout = sys.stdout
