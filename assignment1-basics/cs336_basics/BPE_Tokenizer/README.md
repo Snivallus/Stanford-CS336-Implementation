@@ -1,6 +1,6 @@
 # BPE_Tokenizer
 
-This folder contains an implementation of **Byte Pair Encoding (BPE) training** for tokenization, developed as part of **Stanford CS336 (Spring 2025) – Assignment 1 (Basics)**.
+This folder contains an implementation of Byte Pair Encoding (BPE) trainer and tokenizer.
 
 ---
 

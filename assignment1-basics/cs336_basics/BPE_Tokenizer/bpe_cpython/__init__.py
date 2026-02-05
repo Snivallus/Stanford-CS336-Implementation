@@ -8,3 +8,5 @@ the pure Python implementation.
 """
 
 from ._merge_pair_and_count_pair_difference import _merge_pair_and_count_pair_difference
+
+__all__ = ["_merge_pair_and_count_pair_difference"]

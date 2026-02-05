@@ -20,8 +20,9 @@ from cs336_basics.utils import find_chunk_boundaries
 
 
 N_BYTES = 256
-MAX_NUM_PROCESSES = 64
-MIN_CHUNK_SIZE = 256 * 1024 # 256 KB
+MAX_NUM_WORKERS = 64
+CHUNK_PER_WORKER = 2
+MIN_CHUNK_SIZE = 1 * 1024 * 1024 # 1 MB
 
 Word = bytes
 TokenId = int
@@ -240,22 +241,69 @@ class BPE_Tokenizer:
 
     def decode(
         self, 
-        token_ids: List[TokenId]
+        token_ids: list[int], 
+        use_extend: bool = False,
+        threshold: int = 1024 * 1024,
     ) -> str:
         """
         Decode a list of token IDs into a string.
+
+        Parameters:
+        - token_ids (list[int]): List of token IDs to decode.
+        - use_extend (bool): Force using bytearray.extend() strategy.
+        - threshold (int): If the length of token_ids exceeds this, use bytearray.extend() automatically.
+
+        Returns:
+        - Decoded string.
         """
-        byte_stream = b"".join(self.vocab[i] for i in token_ids)
-        return byte_stream.decode("utf-8", errors = "replace")
+        n = len(token_ids)
+        
+        if use_extend or n > threshold:
+            # Efficient for large token lists
+            out = bytearray()
+            for i in token_ids:
+                out.extend(self.vocab[i])
+            return out.decode("utf-8", errors = "replace")
+        else:
+            # Simple join for small lists
+            return b"".join(self.vocab[i] for i in token_ids).decode("utf-8", errors="replace")
 
 
     def encode(
         self, 
         input: Union[bytes, str],
-        max_num_processes: int = MAX_NUM_PROCESSES,
+        max_num_workers: int = MAX_NUM_WORKERS,
+        chunk_per_worker: int = CHUNK_PER_WORKER,
+        min_chunk_size: int = MIN_CHUNK_SIZE,
     ) -> List[TokenId]:
         """
-        Encode a string or bytes or a large text file into a list of token IDs.
+        Encode a string/bytes or a large text file into a list of token IDs.
+
+        This method supports three types of input:
+        1. Raw bytes or bytearray: directly tokenized and BPE-encoded in-memory.
+        2. A string containing text: converted to UTF-8 bytes and encoded in-memory.
+        3. A string representing a file path: memory-mapped and encoded in parallel.
+
+        For file inputs, this method:
+        - Splits the file into multiple byte chunks aligned to special token boundaries.
+        - Uses multiprocessing to encode chunks independently.
+        - Collects and concatenates results in the original chunk order.
+
+        Special tokens are treated as indivisible units and are never merged with
+        neighboring tokens during BPE encoding.
+
+        Parameters:
+        - input (Union[bytes, str]): Text content (bytes/str) or a file path (str).
+        - max_num_workers (int): Maximum number of parallel worker processes.
+        - chunk_per_worker (int): Number of chunks assigned per worker target.
+        - min_chunk_size (int): Minimum chunk size in bytes when splitting file input.
+
+        Returns:
+        - List[TokenId]: Sequence of token IDs representing the encoded input.
+
+        Raises:
+        - TypeError: If input is not bytes/bytearray/str.
+        - FileNotFoundError: If input is a str that is intended as a file path but does not exist.
         """
         encoded: List[TokenId] = []
 
@@ -269,8 +317,8 @@ class BPE_Tokenizer:
                     boundaries = find_chunk_boundaries(
                         file = f,
                         split_special_token = b"<|endoftext|>",
-                        desired_num_chunks = max_num_processes,
-                        min_chunk_size = MIN_CHUNK_SIZE
+                        desired_num_chunks = max_num_workers * chunk_per_worker,
+                        min_chunk_size = min_chunk_size
                     )
 
                 # create chunk ranges
@@ -292,9 +340,10 @@ class BPE_Tokenizer:
                 # leave half CPUs free for OS and I/O
                 num_procs = min(
                     max(1, os.cpu_count() // 2),
-                    len(ranges),
+                    max_num_workers,
+                    len(ranges)
                 )
-                
+
                 # preallocate result slots
                 chunk_results = [None] * len(ranges)
 
@@ -306,7 +355,7 @@ class BPE_Tokenizer:
                     ):
                         chunk_results[idx] = ids
 
-                # --- stitch chunks in order ---
+                # stitch chunks in order
                 encoded = []
                 for ids in chunk_results:
                     encoded.extend(ids)
@@ -346,6 +395,36 @@ class BPE_Tokenizer:
 
     @staticmethod
     def _encode_chunk_worker(args):
+        """
+        Encode a file chunk into token IDs.
+
+        This function is designed to be executed in parallel using multiprocessing.
+        Each worker:
+        - Memory-maps the full file (read-only).
+        - Extracts the assigned byte slice [start:end].
+        - Splits the slice by special tokens (if enabled).
+        - Applies GPT-2 regex pre-tokenization on each block.
+        - Applies BPE merges to each extracted word.
+        - Emits special token IDs between blocks when present.
+
+        The function returns both the chunk index and the token ID list so that the
+        caller can restore the original ordering of chunks.
+
+        Parameters:
+        - args: Tuple containing:
+            - idx (int): Chunk index used for reordering outputs.
+            - input_path (str): Path to the input file.
+            - start (int): Start byte offset of the chunk.
+            - end (int): End byte offset of the chunk.
+            - gpt2_pattern (re.Pattern): Compiled GPT-2 regex for word pre-tokenization.
+            - special_token_pattern (Optional[re.Pattern]): Regex pattern matching special tokens.
+            - special_token_bytes (Dict[bytes, TokenId]): Mapping from special token bytes to token IDs.
+            - merge_ranks (MergeRanks): Dictionary mapping merge pairs to their rank.
+            - byte_to_id (Byte2ID): Mapping from token bytes to token IDs.
+
+        Returns:
+        - Tuple[int, List[TokenId]]: (chunk_index, token_ids)
+        """
         (
             idx, # <- chunk index
             input_path, start, end,
@@ -356,34 +435,38 @@ class BPE_Tokenizer:
             byte_to_id
         ) = args
 
+        token_ids = []
+
         with open(input_path, "rb") as f:
             mm = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
-            data = mm[start:end]
+            try:
+                data = mm[start:end]
 
-            token_ids = []
+                if len(special_token_bytes) == 0:
+                    blocks = [data]
+                    specials = []
+                else:
+                    blocks = special_token_pattern.split(data)
+                    specials = special_token_pattern.findall(data)
 
-            if len(special_token_bytes) == 0:
-                blocks = [data]
-                specials = []
-            else:
-                blocks = special_token_pattern.split(data)
-                specials = special_token_pattern.findall(data)
-
-            for i, block in enumerate(blocks):
-                for m in gpt2_pattern.finditer(block):
-                    token_ids.extend(
-                        _encode_word(
-                            m.group(0),
-                            byte_to_id,
-                            merge_ranks
+                for i, block in enumerate(blocks):
+                    for m in gpt2_pattern.finditer(block):
+                        token_ids.extend(
+                            _encode_word(
+                                m.group(0),
+                                byte_to_id,
+                                merge_ranks
+                            )
                         )
-                    )
 
-                if i < len(specials):
-                    token_ids.append(special_token_bytes[specials[i]])
+                    if i < len(specials):
+                        token_ids.append(special_token_bytes[specials[i]])
 
-            del data
-            mm.close()
+                del data
+            except Exception as e:
+                raise(f"Error encoding chunk {idx}: {e}")
+            finally:
+                mm.close()
 
         return idx, token_ids
 
@@ -445,6 +528,29 @@ def _encode_word(
     byte_to_id: Byte2ID,
     merge_ranks: MergeRanks, 
 )-> List[TokenId]:
+    """
+    Encode a single word (byte string) into BPE token IDs.
+
+    This function applies Byte Pair Encoding (BPE) merges greedily:
+    - Initialize the word as a list of single-byte symbols.
+    - Repeatedly find all adjacent symbol pairs.
+    - Select the pair with the best (lowest) merge rank.
+    - Merge that pair into a new symbol.
+    - Stop when no mergeable adjacent pair remains.
+
+    Parameters:
+    - word (Word): Input word as raw bytes.
+    - byte_to_id (Byte2ID): Mapping from token byte strings to token IDs.
+    - merge_ranks (MergeRanks): Dictionary mapping merge pairs (bytes, bytes) to their rank
+      (lower rank = higher merge priority).
+
+    Returns:
+    - List[TokenId]: Token IDs representing the BPE-encoded word.
+
+    Notes:
+    - The algorithm is greedy and always applies the highest-priority merge available.
+    - This function assumes all resulting merged symbols exist in byte_to_id.
+    """
     symbols = [bytes([b]) for b in word]
 
     while True:

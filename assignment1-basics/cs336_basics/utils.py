@@ -1,5 +1,7 @@
 import os
 from typing import BinaryIO, List
+import random
+
 
 class TeeStdout:
     """
@@ -23,7 +25,7 @@ class TeeStdout:
 
 def find_chunk_boundaries(
     file: BinaryIO,
-    split_special_token: bytes,
+    split_special_token: bytes = b"<|endoftext|>",
     desired_num_chunks: int = 64,
     min_chunk_size: int = 4 * 1024 * 1024, # 4 MB
 ) -> List[int]:
@@ -67,3 +69,57 @@ def find_chunk_boundaries(
 
     # Make sure all boundaries are unique, but might be fewer than desired_num_chunks
     return sorted(set(chunk_boundaries))
+
+
+def sample_documents(
+    file_path: str,
+    split_special_token: bytes = b"<|endoftext|>",
+    num_samples: int = 10,
+    desired_num_chunks: int = 100,
+    min_doc_size: int = 1 * 1024 * 1024,  # 1 MB
+    seed: int = 51
+) -> List[str]:
+    """
+    Sample `num_samples` documents from a large file without reading it all into memory.
+
+    Steps:
+    1. Compute approximate chunk boundaries using `find_chunk_boundaries`.
+    2. Randomly pick `num_samples` chunks.
+    3. Read each chunk from file and return as UTF-8 string.
+
+    Returns:
+        List of sampled document strings.
+    """
+    sampled_docs = []
+
+    with open(file_path, "rb") as f:
+        # Compute chunk boundaries
+        boundaries = find_chunk_boundaries(
+            file = f,
+            split_special_token = split_special_token,
+            desired_num_chunks = desired_num_chunks,
+            min_chunk_size = min_doc_size
+        )
+
+        # Each chunk = (start, end)
+        chunks = [(boundaries[i], boundaries[i + 1]) for i in range(len(boundaries) - 1)]
+
+        # Sample chunks
+        rng = random.Random(seed)
+        sampled_chunks = rng.sample(chunks, min(num_samples, len(chunks)))
+
+        # Read the sampled chunks
+        for start, end in sampled_chunks:
+            f.seek(start)
+            chunk_bytes = f.read(end - start)
+
+            # decode to string
+            try:
+                chunk_str = chunk_bytes.decode("utf-8")
+            except UnicodeDecodeError:
+                # fallback: replace undecodable bytes
+                chunk_str = chunk_bytes.decode("utf-8", errors="replace")
+
+            sampled_docs.append(chunk_str)
+
+    return sampled_docs

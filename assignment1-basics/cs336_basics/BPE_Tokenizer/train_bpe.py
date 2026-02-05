@@ -38,6 +38,7 @@ from cs336_basics.utils import find_chunk_boundaries
 
 N_BYTES = 256
 MAX_NUM_COUNTERS = 64
+CHUNK_PER_COUNTER = 2
 MIN_CHUNK_SIZE = 1024 * 1024 # 1 MB
 
 Word = bytes
@@ -66,6 +67,7 @@ class BPE_Trainer():
         vocab_size: int,
         special_tokens: List[str],
         max_num_counters: int = MAX_NUM_COUNTERS,
+        chunk_per_counter: int = CHUNK_PER_COUNTER,
         min_chunk_size: int = MIN_CHUNK_SIZE,
     ) -> Tuple[Vocab, List[Merge]]:
         """
@@ -89,6 +91,7 @@ class BPE_Trainer():
         - vocab_size (int): Desired final vocabulary size after BPE merges.
         - special_tokens (List[str]): List of special tokens to include in the vocabulary.
         - max_num_counters (int): maximum number of parallel counting processes.
+        - chunk_per_counter (int): number of chunks to process per worker.
         - min_chunk_size (int): Minimum size of each chunk in bytes.
 
         Returns:
@@ -102,6 +105,7 @@ class BPE_Trainer():
             input_path, 
             special_tokens, 
             max_num_counters, 
+            chunk_per_counter,
             min_chunk_size
         )
         end_time = time.perf_counter()
@@ -170,6 +174,7 @@ class BPE_Trainer():
         input_path: str,
         special_tokens: List[str],
         max_num_counters: int,
+        chunk_per_counter: int,
         min_chunk_size: int,
     ) -> WordCounter:
         """
@@ -192,6 +197,7 @@ class BPE_Trainer():
         - input_path (str): Path to the input text or binary file.
         - special_tokens (List[str]): List of special tokens to recognize as separate words.
         - max_num_counters (int): Maximum number of parallel counting processes.
+        - chunk_per_counter (int): Number of chunks to process per worker.
         - min_chunk_size (int): Minimum size of each chunk in bytes.
 
         Returns:
@@ -203,7 +209,7 @@ class BPE_Trainer():
             boundaries = find_chunk_boundaries(
                 file = f,
                 split_special_token = b"<|endoftext|>",
-                desired_num_chunks = max_num_counters,
+                desired_num_chunks = max_num_counters * chunk_per_counter,
                 min_chunk_size = min_chunk_size
             )
 
@@ -228,7 +234,8 @@ class BPE_Trainer():
         # leave half CPUs free for OS and I/O
         num_procs = min(
             max(1, os.cpu_count() // 2),
-            len(ranges),
+            max_num_counters,
+            len(ranges)
         )
 
         with mp.Pool(processes = num_procs) as pool:
@@ -285,15 +292,19 @@ class BPE_Trainer():
         counter = Counter()
         with open(input_path, "rb") as f:
             mm = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
-            data = mm[start:end]
+            try:
+                data = mm[start:end]
 
-            blocks = special_token_pattern.split(data)
-            for block in blocks:
-                for m in gpt2_pattern.finditer(block):
-                    counter[m.group(0)] += 1
+                blocks = special_token_pattern.split(data)
+                for block in blocks:
+                    for m in gpt2_pattern.finditer(block):
+                        counter[m.group(0)] += 1
 
-            del data
-            mm.close()
+                del data
+            except Exception as e:
+                raise(f"Error processing chunk {start}-{end}: {e}")
+            finally:
+                mm.close()
 
         return counter
 

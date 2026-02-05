@@ -66,7 +66,7 @@ class TestBPETraining(unittest.TestCase):
         Expected first 6 merges:
             ['s t', 'e st', 'o w', 'l ow', 'w est', 'n e']
         """
-
+        print(f"\n[{self._testMethodName}]")
         corpus = (
             "low low low low low\n"
             "lower lower widest widest widest\n"
@@ -121,6 +121,7 @@ class TestBPETraining(unittest.TestCase):
         vocab_size: int, 
         special_tokens: List[str],
         max_num_counters: int,
+        chunk_per_counter: int,
         min_chunk_size: int,
         vocab_path: str,
         merges_path: str,
@@ -152,6 +153,7 @@ class TestBPETraining(unittest.TestCase):
             vocab_size = vocab_size,
             special_tokens = special_tokens,
             max_num_counters = max_num_counters,
+            chunk_per_counter = chunk_per_counter,
             min_chunk_size = min_chunk_size
         )
 
@@ -240,11 +242,13 @@ class TestBPETraining(unittest.TestCase):
 
 
     def test_02_tinystories_profile_train_bpe(self):
+        print(f"\n[{self._testMethodName}]")
         self._profile_train_bpe(
             input_path = "../datasets/TinyStoriesV2-GPT4-train.txt",
             vocab_size = 256 + 1 + 9743, # bytes + <|endoftext|> + merge budget
             special_tokens = ["<|endoftext|>"],
             max_num_counters = 64,
+            chunk_per_counter = 2,
             min_chunk_size = 4 * 1024 * 1024, # 4 MB
             vocab_path = "cs336_basics/BPE_Tokenizer/tests/TinyStoriesV2-GPT4-train-vocab.pkl",
             merges_path = "cs336_basics/BPE_Tokenizer/tests/TinyStoriesV2-GPT4-train-merges.pkl", 
@@ -254,11 +258,13 @@ class TestBPETraining(unittest.TestCase):
 
 
     def test_03_OpenWebText_profile_train_bpe(self):
+        print(f"\n[{self._testMethodName}]")
         self._profile_train_bpe(
             input_path = "../datasets/owt_train.txt",
             vocab_size = 256 + 1 + 31743, # bytes + <|endoftext|> + merge budget
             special_tokens = ["<|endoftext|>"],
             max_num_counters = 64,
+            chunk_per_counter = 2,
             min_chunk_size = 4 * 1024 * 1024, # 4 MB
             vocab_path = "cs336_basics/BPE_Tokenizer/tests/owt_train-vocab.pkl",
             merges_path = "cs336_basics/BPE_Tokenizer/tests/owt_train-merges.pkl",
