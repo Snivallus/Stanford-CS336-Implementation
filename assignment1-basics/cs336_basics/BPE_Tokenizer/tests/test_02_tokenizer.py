@@ -231,7 +231,7 @@ class TestBPETokenizer(unittest.TestCase):
         throughput = (file_bytes / elapsed) / (1024 * 1024) # MB/sec
 
         print(
-            "[OK] Calculating statistics of tokenizer\n:"
+            "[OK] Calculating statistics of tokenizer:\n"
             f"  - vocab size : {len(tokenizer.vocab)}\n"
             f"  - merges     : {len(tokenizer.merges)}\n"
             f"  - bytes in file: {file_bytes}\n"

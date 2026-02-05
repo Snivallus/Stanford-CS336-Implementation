@@ -29,4 +29,4 @@ tests/
 └── owt_valid.npy # Token IDs of OpenWebText validation set
 ```
 
-Note that this process takes up to an hour on a Linux server with 128 cores.
+Note that this process takes up to two hours on a Linux server with 128 cores.
