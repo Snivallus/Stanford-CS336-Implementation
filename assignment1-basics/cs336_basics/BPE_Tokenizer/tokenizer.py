@@ -16,7 +16,7 @@ from typing import (
     Iterator
 )
 
-from cs336_basics.utils import find_chunk_boundaries
+from cs336_basics.BPE_Tokenizer.utils import find_chunk_boundaries
 
 
 N_BYTES = 256

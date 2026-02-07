@@ -24,7 +24,7 @@ from typing import List
 import unittest
 
 from cs336_basics.BPE_Tokenizer import BPE_Trainer # implementation of BPE Trainer
-from cs336_basics.utils import TeeStdout # Utility to tee stdout to a file
+from cs336_basics.BPE_Tokenizer.utils import TeeStdout # Utility to tee stdout to a file
 
 
 LOG_PATH = "cs336_basics/BPE_Tokenizer/tests/test_01_train_bpe.txt"

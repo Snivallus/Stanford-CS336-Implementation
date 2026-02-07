@@ -10,7 +10,7 @@ import numpy as np
 import unittest
 
 from cs336_basics.BPE_Tokenizer import BPE_Tokenizer # implementation of BPE Tokenizer
-from cs336_basics.utils import (
+from cs336_basics.BPE_Tokenizer import (
     TeeStdout, # Utility to tee stdout to a file
     sample_documents # Utility to sample documents from a directory
 )
