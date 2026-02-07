@@ -9,7 +9,7 @@ This folder contains an implementation of Byte Pair Encoding (BPE) trainer and t
 ```bash
 BPE_Tokenizer/
 ├── README.md          # This file
-├── __init__.py
+├── __init__.py        # Module exports
 ├── train_bpe.py       # BPE trainer
 ├── tokenizer.py       # BPE tokenizer
 ├── max_heapq.py       # Compatibility max-heap wrapper around heapq

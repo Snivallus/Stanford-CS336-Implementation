@@ -11,7 +11,7 @@ After running `uv sync` in the root folder of CS336 Assignment 1, the folder sho
 ```bash
 bpe_cpython/
 ├── README.md # This file
-├── init.py
+├── init.py # Module exports
 ├── _merge_pair_and_count_pair_difference.pyx # Cython source
 ├── _merge_pair_and_count_pair_difference.c # Generated C source
 └── _merge_pair_and_count_pair_difference.cpython-311-x86_64-linux-gnu.so # Compiled extension
