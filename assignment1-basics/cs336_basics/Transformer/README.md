@@ -1,10 +1,8 @@
 # Transformer
 
-This folder contains a minimal Transformer language model implementation built from scratch,
-following the architecture used in GPT-style models.
-
-It includes both the full language model (`TransformerLM`) and a collection of reusable
-Transformer building blocks (attention, normalization, RoPE, FFN, etc.).
+This folder contains a minimal Transformer language model implementation built from scratch.  
+It includes both the full language model (`TransformerLM`) and a collection of reusable 
+Transformer building blocks.
 
 ---
 
