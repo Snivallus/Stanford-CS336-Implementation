@@ -670,7 +670,14 @@ def run_cross_entropy(
     Returns:
         Float[Tensor, ""]: The average cross-entropy loss across examples.
     """
-    raise NotImplementedError
+    from cs336_basics.Trainer.Loss import cross_entropy_loss
+    
+    loss_mean, perplexity = cross_entropy_loss(
+        logits = inputs, 
+        target = targets
+    )
+
+    return loss_mean
 
 
 def run_gradient_clipping(parameters: Iterable[torch.nn.Parameter], max_l2_norm: float) -> None:
