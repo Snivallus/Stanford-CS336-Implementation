@@ -20,3 +20,6 @@ Basic_Building_Blocks/
 ├── multihead_self_attention.py       # Causal multi-head self-attention module
 └── transformer_block.py              # Pre-norm Transformer block (Attention + FFN)
 ```
+
+Files are arranged roughly in the order they are implemented and composed.  
+Later modules depend on earlier primitives (e.g., MHA depends on attention + softmax + RoPE).
