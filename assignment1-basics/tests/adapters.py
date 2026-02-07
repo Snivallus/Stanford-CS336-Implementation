@@ -672,7 +672,7 @@ def run_cross_entropy(
     """
     from cs336_basics.Trainer.Loss import cross_entropy_loss
     
-    loss_mean, perplexity = cross_entropy_loss(
+    loss_mean = cross_entropy_loss(
         logits = inputs, 
         target = targets
     )
@@ -696,7 +696,8 @@ def get_adamw_cls() -> Any:
     """
     Returns a torch.optim.Optimizer that implements AdamW.
     """
-    raise NotImplementedError
+    from cs336_basics.Trainer.Optimizer import AdamW
+    return AdamW
 
 
 def run_get_lr_cosine_schedule(
