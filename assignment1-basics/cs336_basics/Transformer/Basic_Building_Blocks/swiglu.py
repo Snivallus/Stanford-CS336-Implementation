@@ -108,3 +108,24 @@ class SwiGLU(nn.Module):
 
         out: Float[Tensor, "... d_model"] = self.w2(gated)
         return out
+
+
+def silu(
+    x: Float[Tensor, "..."],
+) -> Float[Tensor, "..."]:
+    """
+    Apply the SiLU (Sigmoid Linear Unit) activation.
+
+    Computes:
+
+        SiLU(x) = x * sigmoid(x)
+
+    Parameters:
+        - x (Tensor):
+            Input tensor of shape (...).
+
+    Returns:
+        - y (Tensor):
+            Output tensor of shape (...).
+    """
+    return x * torch.sigmoid(x)
