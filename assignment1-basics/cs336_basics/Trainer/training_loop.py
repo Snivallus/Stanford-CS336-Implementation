@@ -119,6 +119,11 @@ def main():
 
     args = parser.parse_args()
 
+    print("\n========== Training Config ==========")
+    for k, v in sorted(vars(args).items()):
+        print(f"{k:25s}: {v}")
+    print("===========================================\n")
+
     # -----------------------
     # Set random seed
     # -----------------------

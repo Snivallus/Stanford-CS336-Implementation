@@ -20,7 +20,7 @@ PYTHONUNBUFFERED=1 python ./cs336_basics/Trainer/training_loop.py \
   --val_tokens "$VALID_TOKENS" \
   --device cuda \
   --dtype bfloat16 \
-  --batch_size 8 \
+  --batch_size 12 \
   --context_length 1024 \
   --max_iters 20000 \
   --vocab_size 10000 \
@@ -29,15 +29,15 @@ PYTHONUNBUFFERED=1 python ./cs336_basics/Trainer/training_loop.py \
   --num_heads 16 \
   --d_ff 4096 \
   --rope_theta 10000.0 \
-  --lr_max 3e-4 \
+  --lr_max 5e-4 \
   --lr_min 3e-5 \
   --warmup_iters 200 \
   --cosine_iters 20000 \
   --weight_decay 0.1 \
   --grad_clip 1.0 \
-  --log_every 10 \
-  --eval_every 100 \
-  --eval_batches 50 \
+  --log_every 20 \
+  --eval_every 200 \
+  --eval_batches 100 \
   --checkpoint_path "$CHECKPOINT_PATH" \
   --early_stop_patience 10 \
   --early_stop_min_delta 0.001 \
