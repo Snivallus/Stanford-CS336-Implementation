@@ -241,7 +241,7 @@ class BPE_Tokenizer:
 
     def decode(
         self, 
-        token_ids: list[int], 
+        token_ids: List[int], 
         use_extend: bool = False,
         threshold: int = 1024 * 1024,
     ) -> str:
@@ -249,7 +249,7 @@ class BPE_Tokenizer:
         Decode a list of token IDs into a string.
 
         Parameters:
-        - token_ids (list[int]): List of token IDs to decode.
+        - token_ids (List[int]): List of token IDs to decode.
         - use_extend (bool): Force using bytearray.extend() strategy.
         - threshold (int): If the length of token_ids exceeds this, use bytearray.extend() automatically.
 

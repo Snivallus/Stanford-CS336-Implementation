@@ -53,6 +53,22 @@ class AdamW(torch.optim.Optimizer):
         super().__init__(params, defaults)
 
 
+    def set_lr(
+        self,
+        lr: float
+    ) -> None:
+        """
+        Set the learning rate.
+
+        Args:
+            - lr: Learning rate alpha.
+        """
+        if lr < 0:
+            raise ValueError(f"Invalid learning rate: {lr}")
+        for group in self.param_groups:
+            group["lr"] = lr
+
+
     def step(
         self, 
         closure: Optional[Callable] = None

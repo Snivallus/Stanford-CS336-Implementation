@@ -12,7 +12,7 @@ and checkpointing support.
 Trainer/
 ├── README.md                      # This file
 ├── __init__.py                    # Module exports
-├── training_loop.py               # Main training loop
+├── trainer.py                     # Main training loop
 ├── Loss/                          # Loss functions (e.g. cross entropy, perplexity)
 │   ├── README.md
 │   ├── __init__.py

@@ -1,15 +1,17 @@
-import math
 from dataclasses import dataclass
 import torch
 import torch.nn as nn
 from torch import Tensor
-from typing import Optional
+from typing import Optional, List, Union
 from jaxtyping import Float, Int
 
-from cs336_basics.Transformer.Basic_Building_Blocks import Embedding
-from cs336_basics.Transformer.Basic_Building_Blocks import Linear
-from cs336_basics.Transformer.Basic_Building_Blocks import RMSNorm
-from cs336_basics.Transformer.Basic_Building_Blocks import TransformerBlock
+from cs336_basics.Transformer.Basic_Building_Blocks import (
+    Linear,
+    Embedding,
+    RMSNorm,
+    softmax,
+    TransformerBlock
+)
 
 
 @dataclass
@@ -186,7 +188,112 @@ class TransformerLM(nn.Module):
         logits = self.lm_head(x)
 
         return logits
-    
+
+
+    @torch.no_grad()
+    def generate(
+        self,
+        prompt_token_ids: Union[Int[Tensor, " seq_len"], List[int]],
+        max_new_tokens: int = 128,
+        temperature: float = 1.0,
+        top_p: float = 1.0,
+        eos_token_id: Optional[int] = None,
+    ) -> List[int]:
+        """
+        Autoregressively generate tokens from the language model.
+
+        This implements temperature-scaled sampling + nucleus (top-p) sampling.
+
+        Args:
+            prompt_token_ids (Tensor | list[int]):
+                Initial prompt token ids of shape (seq_len,).
+            max_new_tokens (int):
+                Maximum number of new tokens to generate.
+            temperature (float):
+                Temperature scaling parameter tau. Must be > 0.
+                Lower values make output more greedy.
+            top_p (float):
+                Nucleus sampling probability threshold in (0, 1].
+                If top_p = 1.0, no truncation is performed.
+            eos_token_id (int | None):
+                Optional end-of-sequence token id. If provided, generation stops
+                when eos_token_id is generated.
+
+        Returns:
+            List[int]:
+                The full generated token sequence (prompt + new tokens).
+        """
+        if isinstance(prompt_token_ids, list):
+            token_ids = torch.tensor(prompt_token_ids, dtype=torch.int64)
+        else:
+            token_ids = prompt_token_ids.to(dtype=torch.int64)
+
+        if token_ids.ndim != 1:
+            raise ValueError("prompt_token_ids must be a 1D tensor of shape (seq_len,)")
+
+        if temperature <= 0:
+            raise ValueError("temperature must be > 0")
+
+        if not (0 < top_p <= 1.0):
+            raise ValueError("top_p must be in (0, 1]")
+
+        # ensure model mode
+        self.eval()
+
+        # we store tokens as python list for easy append
+        generated = token_ids.tolist()
+
+        for _ in range(max_new_tokens):
+            # crop context if too long
+            context = generated[-self.context_length :]
+            context_tensor = torch.tensor(context, dtype=torch.int64, device=next(self.parameters()).device)
+
+            # (seq_len,) -> (1, seq_len)
+            context_tensor = context_tensor.unsqueeze(0)
+
+            # logits: (1, seq_len, vocab_size)
+            logits = self.forward(context_tensor)
+
+            # take last position logits: (vocab_size,)
+            next_logits = logits[0, -1, :]
+
+            # temperature scaling
+            next_logits = next_logits / temperature
+
+            # softmax -> probs: (vocab_size,)
+            probs = softmax(next_logits, dim=-1)
+
+            # nucleus sampling (top-p)
+            if top_p < 1.0:
+                sorted_probs, sorted_indices = torch.sort(probs, descending=True)
+
+                cumulative_probs = torch.cumsum(sorted_probs, dim=0)
+
+                # keep smallest set where cumulative >= top_p
+                cutoff = torch.searchsorted(cumulative_probs, top_p)
+
+                # cutoff is index, we want include it
+                cutoff = int(cutoff.item()) + 1
+
+                kept_probs = sorted_probs[:cutoff]
+                kept_indices = sorted_indices[:cutoff]
+
+                kept_probs = kept_probs / kept_probs.sum()
+
+                sampled_idx = torch.multinomial(kept_probs, num_samples=1).item()
+                next_token_id = int(kept_indices[sampled_idx].item())
+
+            else:
+                # sample directly
+                next_token_id = int(torch.multinomial(probs, num_samples=1).item())
+
+            generated.append(next_token_id)
+
+            if eos_token_id is not None and next_token_id == eos_token_id:
+                break
+
+        return generated
+
 
     def statistics(
         self,
