@@ -13,6 +13,7 @@ BPE_Tokenizer/
 ├── train_bpe.py       # BPE trainer
 ├── tokenizer.py       # BPE tokenizer
 ├── max_heapq.py       # Compatibility max-heap wrapper around heapq
+├── utils.py           # Utils for BPE training (and test suite)
 ├── bpe_cpython/       # Optional CPython acceleration
 │   ├── README.md
 │   └── _merge_pair_and_count_pair_difference.pyx
