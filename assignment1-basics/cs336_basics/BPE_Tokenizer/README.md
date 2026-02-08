@@ -12,7 +12,7 @@ BPE_Tokenizer/
 ├── __init__.py        # Module exports
 ├── train_bpe.py       # BPE trainer
 ├── tokenizer.py       # BPE tokenizer
-├── max_heapq.py       # Compatibility max-heap wrapper around heapq
+├── max_heapq.py       # Compatibility max-heap wrapper around heapq (for Python <= 3.13)
 ├── utils.py           # Utils for BPE training (and test suite)
 ├── bpe_cpython/       # Optional CPython acceleration
 │   ├── README.md
