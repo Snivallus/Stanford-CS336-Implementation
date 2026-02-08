@@ -635,7 +635,13 @@ def run_get_batch(
         is the sampled input sequences, and the second tuple item is the corresponding
         language modeling labels.
     """
-    raise NotImplementedError
+    from cs336_basics.Trainer.Data_Loader import data_loader
+    return data_loader(
+        x = dataset,
+        batch_size = batch_size,
+        context_length = context_length,
+        device = device
+    )
 
 
 def run_softmax(in_features: Float[Tensor, " ..."], dim: int) -> Float[Tensor, " ..."]:
@@ -689,7 +695,11 @@ def run_gradient_clipping(parameters: Iterable[torch.nn.Parameter], max_l2_norm:
 
     The gradients of the parameters (parameter.grad) should be modified in-place.
     """
-    raise NotImplementedError
+    from cs336_basics.Trainer.Optimizer import gradient_clipping
+    return gradient_clipping(
+        params = parameters, 
+        max_l2_norm = max_l2_norm
+    )
 
 
 def get_adamw_cls() -> Any:
@@ -725,7 +735,14 @@ def run_get_lr_cosine_schedule(
     Returns:
         Learning rate at the given iteration under the specified schedule.
     """
-    raise NotImplementedError
+    from cs336_basics.Trainer.Scheduler import cosine_annealing_scheduler
+    return cosine_annealing_scheduler(
+        t = it,
+        alpha_max = max_learning_rate,
+        alpha_min = min_learning_rate,
+        T_w = warmup_iters,
+        T_c = cosine_cycle_iters,
+    )
 
 
 def run_save_checkpoint(
@@ -744,7 +761,13 @@ def run_save_checkpoint(
             we've completed.
         out (str | os.PathLike | BinaryIO | IO[bytes]): Path or file-like object to serialize the model, optimizer, and iteration to.
     """
-    raise NotImplementedError
+    from cs336_basics.Trainer.Checkpointing import save_checkpoint
+    save_checkpoint(
+        model = model,
+        optimizer = optimizer,
+        iteration = iteration,
+        out = out
+    )
 
 
 def run_load_checkpoint(
@@ -765,7 +788,12 @@ def run_load_checkpoint(
     Returns:
         int: the previously-serialized number of iterations.
     """
-    raise NotImplementedError
+    from cs336_basics.Trainer.Checkpointing import load_checkpoint
+    return load_checkpoint(
+        src = src,
+        model = model,
+        optimizer = optimizer
+    )
 
 
 def get_tokenizer(
