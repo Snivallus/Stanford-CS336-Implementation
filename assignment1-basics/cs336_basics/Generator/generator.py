@@ -86,23 +86,43 @@ class Generator:
     
 
 if __name__ == "__main__":
-    # Example usage
+
+    # tokenizer = BPE_Tokenizer.from_files(
+    #     vocab_path = "cs336_basics/BPE_Tokenizer/tests/TinyStoriesV2-GPT4-train-vocab.pkl",
+    #     merges_path = "cs336_basics/BPE_Tokenizer/tests/TinyStoriesV2-GPT4-train-merges.pkl",
+    #     special_tokens = ["<|endoftext|>"]
+    # )
+    # generator = Generator(
+    #     tokenizer = tokenizer,
+    #     model = "scripts/checkpoints/train_on_gpu_TinyStories_20260209_011538.pt"
+    # )
+
+    # prompt = "Once upon a time, there was a man called Snape. He was a professor at a magic school."
+    # generated_text = generator.generate(
+    #     prompt = prompt, 
+    #     max_new_tokens = 256, 
+    #     temperature = 0.8, 
+    #     top_p = 0.95,
+    #     eos_token_id = tokenizer.special_token_bytes[b'<|endoftext|>']
+    # )
+    # print(f"TinyStories:\n{generated_text}\n")
+
     tokenizer = BPE_Tokenizer.from_files(
-        vocab_path = "cs336_basics/BPE_Tokenizer/tests/TinyStoriesV2-GPT4-train-vocab.pkl",
-        merges_path = "cs336_basics/BPE_Tokenizer/tests/TinyStoriesV2-GPT4-train-merges.pkl",
+        vocab_path = "cs336_basics/BPE_Tokenizer/tests/owt_train-vocab.pkl",
+        merges_path = "cs336_basics/BPE_Tokenizer/tests/owt_train-merges.pkl",
         special_tokens = ["<|endoftext|>"]
     )
     generator = Generator(
         tokenizer = tokenizer,
-        model = "scripts/checkpoints/train_on_gpu_20260209_000134.pt"
+        model = "scripts/checkpoints/train_on_gpu_OpenWebText_20260209_085954.pt"
     )
 
-    prompt = "Once upon a time"
+    prompt = "I have a dream, that one day this nation will"
     generated_text = generator.generate(
         prompt = prompt, 
-        max_new_tokens = 256, 
-        temperature = 0.2, 
+        max_new_tokens = 128, 
+        temperature = 0.9, 
         top_p = 0.9,
         eos_token_id = tokenizer.special_token_bytes[b'<|endoftext|>']
     )
-    print(generated_text)
+    print(f"OpenWebText:\n{generated_text}\n")

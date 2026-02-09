@@ -12,3 +12,11 @@ Trainer/
 ├── __init__.py  # Module exports
 └── generator.py # The generator
 ```
+
+## Usage
+
+Run basic example by:
+
+```bash
+uv run ./cs336_basics/Generator/generator.py
+```

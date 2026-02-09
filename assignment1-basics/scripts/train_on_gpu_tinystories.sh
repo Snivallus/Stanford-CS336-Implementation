@@ -1,16 +1,12 @@
 #!/bin/bash
 set -e
 
-# ==========================================
-# GPT2-medium
-# ==========================================
-
-export CUDA_VISIBLE_DEVICES=3
+export CUDA_VISIBLE_DEVICES=0
 
 TRAIN_TOKENS="./cs336_basics/BPE_Tokenizer/tests/TinyStoriesV2-GPT4-train.npy"
 VALID_TOKENS="./cs336_basics/BPE_Tokenizer/tests/TinyStoriesV2-GPT4-valid.npy"
-CHECKPOINT_PATH="./scripts/checkpoints/train_on_gpu_$(date +%Y%m%d_%H%M%S).pt"
-LOG_PATH="./scripts/logs/train_on_gpu_$(date +%Y%m%d_%H%M%S).log"
+CHECKPOINT_PATH="./scripts/checkpoints/train_on_gpu_TinyStories_$(date +%Y%m%d_%H%M%S).pt"
+LOG_PATH="./scripts/logs/train_on_gpu_TinyStories_$(date +%Y%m%d_%H%M%S).log"
 
 mkdir -p ./scripts/checkpoints
 mkdir -p ./scripts/logs
@@ -20,14 +16,14 @@ PYTHONUNBUFFERED=1 python ./cs336_basics/Trainer/trainer.py \
   --valid_tokens "$VALID_TOKENS" \
   --device cuda \
   --dtype bfloat16 \
-  --batch_size 12 \
-  --context_length 1024 \
+  --batch_size 32 \
+  --context_length 256 \
   --max_steps 30000 \
   --vocab_size 10000 \
-  --num_layers 24 \
+  --num_layers 20 \
   --d_model 1024 \
   --num_heads 16 \
-  --d_ff 4096 \
+  --d_ff 2688 \
   --rope_theta 10000.0 \
   --lr_max 5e-4 \
   --lr_min 3e-5 \
